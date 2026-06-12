@@ -1,0 +1,12 @@
+# Ephemeral Redmine 6 stack for cassette recording + integration tests.
+#
+# Phase 2 will flesh this out. Includes:
+#   - redmine:6-alpine on port 13080 (host-side, avoids dev's 8281)
+#   - postgres:16 sidecar
+#   - mountable seed script that creates 3 trackers, 2 projects, 2 roles,
+#     non-trivial workflow restrictions
+#
+# Usage:
+#   docker compose -f docker/docker-compose.test.yml up -d
+#   pytest -m integration
+#   docker compose -f docker/docker-compose.test.yml down -v

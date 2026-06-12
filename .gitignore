@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Cache (local dev runs)
+.cache/
+*.db
+*.db-journal
+
+# vcrpy cassettes are checked in; only local test artifacts are ignored
+.pytest_history

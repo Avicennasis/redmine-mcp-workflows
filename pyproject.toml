@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "redmine-mcp-workflows"
+version = "1.0.0"
+description = "Schema-aware Model Context Protocol server for Redmine: validates workflow transitions, custom fields, and required fields against a per-tracker cache before round-tripping the API."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Avicennasis", email = "avicennasis@gmail.com" },
+]
+keywords = ["mcp", "redmine", "claude", "model-context-protocol", "issue-tracker", "workflow-validation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Bug Tracking",
+]
+dependencies = [
+    "mcp>=1.23.0,<2.0.0",
+    "httpx>=0.27.0",
+    "platformdirs>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "vcrpy>=6.0.0",
+    "ruff>=0.5.0",
+]
+
+[project.scripts]
+redmine-mcp = "redmine_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/avicennasis/redmine-mcp-workflows"
+Issues = "https://github.com/avicennasis/redmine-mcp-workflows/issues"
+Changelog = "https://github.com/avicennasis/redmine-mcp-workflows/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/redmine_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require a live Redmine instance (gated)",
+]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# These are dataclass payload classes, not Python exceptions — N818's
+# "Error suffix" rule doesn't apply, but ruff can't tell them apart.
+"src/redmine_mcp/errors.py" = ["N818"]
