@@ -1,5 +1,12 @@
 # redmine-mcp-workflows
 
+[![CI](https://github.com/Avicennasis/redmine-mcp-workflows/actions/workflows/test.yml/badge.svg)](https://github.com/Avicennasis/redmine-mcp-workflows/actions/workflows/test.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Avicennasis/redmine-mcp-workflows/badge)](https://scorecard.dev/viewer/?uri=github.com/Avicennasis/redmine-mcp-workflows)
+[![Release](https://img.shields.io/github/v/release/Avicennasis/redmine-mcp-workflows?display_name=tag)](https://github.com/Avicennasis/redmine-mcp-workflows/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A schema-aware Model Context Protocol (MCP) server for Redmine.
 
 Most MCP servers for Redmine are thin wrappers around the REST API: an LLM call goes through, Redmine returns `422 Unprocessable Entity`, and the LLM has to guess what went wrong. `redmine-mcp-workflows` is different — it caches each tracker's workflow graph, custom field schemas, and role-based field permissions, then **validates writes before they leave the client**. When something can't succeed, you get a structured error with a clear next step instead of a stack trace.

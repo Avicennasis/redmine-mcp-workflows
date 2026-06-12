@@ -1,0 +1,4 @@
+# Operator-managed release workflow (PyPI OIDC trusted publisher) already
+# exists at .github/workflows/release.yml — the canonical release-python.yml
+# template would clobber it.
+release_artifacts: false
