@@ -80,10 +80,7 @@ async def upload_project_file(
     if not allowed:
         return {
             "error": "path_not_allowed",
-            "hint": (
-                f"Path {resolved} is not under any allowed directory: "
-                f"{allowed_directories}."
-            ),
+            "hint": (f"Path {resolved} is not under any allowed directory: {allowed_directories}."),
             "path": str(resolved),
             "allowed_directories": allowed_directories,
         }

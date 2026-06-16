@@ -33,12 +33,14 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 
 async def test_search_basic(cache):
-    client = FakeClient({
-        ("GET", "/search.json"): {
-            "results": [{"id": 1, "title": "test", "type": "issue"}],
-            "total_count": 1,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/search.json"): {
+                "results": [{"id": 1, "title": "test", "type": "issue"}],
+                "total_count": 1,
+            },
+        }
+    )
     result = await search.search(client, cache, query="test")
     assert result["total_count"] == 1
     assert len(result["results"]) == 1
@@ -47,11 +49,14 @@ async def test_search_basic(cache):
 
 
 async def test_search_project_scoped(cache):
-    client = FakeClient({
-        ("GET", "/projects/myproj/search.json"): {
-            "results": [], "total_count": 0,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects/myproj/search.json"): {
+                "results": [],
+                "total_count": 0,
+            },
+        }
+    )
     result = await search.search(client, cache, query="test", project="myproj")
     assert result["total_count"] == 0
     assert client.calls[-1][1] == "/projects/myproj/search.json"
@@ -72,9 +77,11 @@ async def test_search_invalid_resource_type(cache):
 
 
 async def test_search_resource_type_filter(cache):
-    client = FakeClient({
-        ("GET", "/search.json"): {"results": [], "total_count": 0},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/search.json"): {"results": [], "total_count": 0},
+        }
+    )
     await search.search(client, cache, query="test", resource_types=["issues", "wiki_pages"])
     params = client.calls[-1][2]
     assert params["issues"] == 1
@@ -82,9 +89,11 @@ async def test_search_resource_type_filter(cache):
 
 
 async def test_search_titles_only(cache):
-    client = FakeClient({
-        ("GET", "/search.json"): {"results": [], "total_count": 0},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/search.json"): {"results": [], "total_count": 0},
+        }
+    )
     await search.search(client, cache, query="test", titles_only=True)
     assert client.calls[-1][2]["titles_only"] == 1
 
@@ -96,9 +105,11 @@ async def test_search_invalid_attachments_mode(cache):
 
 
 async def test_search_api_error(cache):
-    client = FakeClient(errors={
-        ("GET", "/search.json"): RedmineAPIError(status_code=500, body="error"),
-    })
+    client = FakeClient(
+        errors={
+            ("GET", "/search.json"): RedmineAPIError(status_code=500, body="error"),
+        }
+    )
     result = await search.search(client, cache, query="test")
     assert "error" in result
 

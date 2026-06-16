@@ -93,25 +93,26 @@ async def list_projects(
             "filtered_locally": False,
         }
 
-    # Filtered path: fetch all pages up to PAGE_CAP, then filter, then slice.
-    # PAGE_CAP × 100 = 1000 projects is plenty for any plausible fleet.
-    PAGE_CAP = 10
-    PAGE_SIZE = 100
+    # Filtered path: fetch all pages up to page_cap, then filter, then slice.
+    # page_cap × 100 = 1000 projects is plenty for any plausible fleet.
+    page_cap = 10
+    page_size = 100
     all_projects: list[dict[str, Any]] = []
-    for page in range(PAGE_CAP):
-        params = {"limit": PAGE_SIZE, "offset": page * PAGE_SIZE}
+    for page in range(page_cap):
+        params = {"limit": page_size, "offset": page * page_size}
         payload = await client.get("/projects.json", params=params)
         if not isinstance(payload, dict):
             break
         page_projects = payload.get("projects") or []
         all_projects.extend(page_projects)
         total = payload.get("total_count", len(all_projects))
-        if len(all_projects) >= total or len(page_projects) < PAGE_SIZE:
+        if len(all_projects) >= total or len(page_projects) < page_size:
             break
 
     q = query.lower()
     matched = [
-        p for p in all_projects
+        p
+        for p in all_projects
         if q in (p.get("name") or "").lower()
         or q in (p.get("identifier") or "").lower()
         or q in (p.get("description") or "").lower()

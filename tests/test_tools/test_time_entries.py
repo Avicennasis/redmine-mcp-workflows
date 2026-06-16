@@ -73,13 +73,20 @@ def _seed_activities(cache: SchemaCache) -> None:
 
 async def test_create_happy_path_resolves_activity_name(cache: SchemaCache) -> None:
     _seed_activities(cache)
-    client = FakeClient({
-        ("POST", "/time_entries.json"): {
-            "time_entry": {"id": 100, "hours": 2.5, "activity": {"id": 9, "name": "Development"}},
-        },
-    })
+    client = FakeClient(
+        {
+            ("POST", "/time_entries.json"): {
+                "time_entry": {
+                    "id": 100,
+                    "hours": 2.5,
+                    "activity": {"id": 9, "name": "Development"},
+                },
+            },
+        }
+    )
     result = await time_entries.create_time_entry(
-        client, cache,
+        client,
+        cache,
         hours="2:30",
         issue_id=42,
         activity="Development",
@@ -105,7 +112,10 @@ async def test_create_rejects_invalid_hours_before_post(cache: SchemaCache) -> N
     _seed_activities(cache)
     client = FakeClient()
     result = await time_entries.create_time_entry(
-        client, cache, hours="not-a-number", project_id=15,
+        client,
+        cache,
+        hours="not-a-number",
+        project_id=15,
     )
     assert result["error"] == "validation_failed"
     assert result["errors"][0]["error"] == "time_entry_hours_invalid"
@@ -116,7 +126,11 @@ async def test_create_rejects_unknown_activity_name(cache: SchemaCache) -> None:
     _seed_activities(cache)
     client = FakeClient()
     result = await time_entries.create_time_entry(
-        client, cache, hours=1.0, project_id=15, activity="Underwater Basket Weaving",
+        client,
+        cache,
+        hours=1.0,
+        project_id=15,
+        activity="Underwater Basket Weaving",
     )
     assert result["error"] == "activity_not_found"
     # Activity check must short-circuit before the POST.
@@ -125,13 +139,18 @@ async def test_create_rejects_unknown_activity_name(cache: SchemaCache) -> None:
 
 async def test_create_propagates_redmine_422(cache: SchemaCache) -> None:
     _seed_activities(cache)
-    client = FakeClient(errors={
-        ("POST", "/time_entries.json"): RedmineAPIError(
-            status_code=422, body={"errors": ["Activity is required"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("POST", "/time_entries.json"): RedmineAPIError(
+                status_code=422, body={"errors": ["Activity is required"]}
+            ),
+        }
+    )
     result = await time_entries.create_time_entry(
-        client, cache, hours=1.0, issue_id=42,
+        client,
+        cache,
+        hours=1.0,
+        issue_id=42,
     )
     assert result["error"] == "redmine_api_422"
 
@@ -142,16 +161,23 @@ async def test_create_propagates_redmine_422(cache: SchemaCache) -> None:
 
 
 async def test_list_passes_filters_and_caps_limit(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/time_entries.json"): {
-            "time_entries": [{"id": 1, "hours": 1.5}],
-            "total_count": 1,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/time_entries.json"): {
+                "time_entries": [{"id": 1, "hours": 1.5}],
+                "total_count": 1,
+            },
+        }
+    )
     result = await time_entries.list_time_entries(
-        client, cache,
-        issue_id=42, user_id=1, from_date="2026-05-01", to_date="2026-05-31",
-        limit=500, offset=10,
+        client,
+        cache,
+        issue_id=42,
+        user_id=1,
+        from_date="2026-05-01",
+        to_date="2026-05-31",
+        limit=500,
+        offset=10,
     )
     assert result["total_count"] == 1
     sent = client.calls[-1][2]
@@ -164,9 +190,11 @@ async def test_list_passes_filters_and_caps_limit(cache: SchemaCache) -> None:
 
 
 async def test_list_with_no_filters(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/time_entries.json"): {"time_entries": [], "total_count": 0},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/time_entries.json"): {"time_entries": [], "total_count": 0},
+        }
+    )
     result = await time_entries.list_time_entries(client, cache)
     assert result["total_count"] == 0
     sent = client.calls[-1][2]
@@ -181,14 +209,20 @@ async def test_list_with_no_filters(cache: SchemaCache) -> None:
 
 async def test_update_happy_path_partial(cache: SchemaCache) -> None:
     _seed_activities(cache)
-    client = FakeClient({
-        ("PUT", "/time_entries/100.json"): None,
-        ("GET", "/time_entries/100.json"): {
-            "time_entry": {"id": 100, "hours": 3.0, "comments": "updated"},
-        },
-    })
+    client = FakeClient(
+        {
+            ("PUT", "/time_entries/100.json"): None,
+            ("GET", "/time_entries/100.json"): {
+                "time_entry": {"id": 100, "hours": 3.0, "comments": "updated"},
+            },
+        }
+    )
     result = await time_entries.update_time_entry(
-        client, cache, 100, hours=3.0, comments="updated",
+        client,
+        cache,
+        100,
+        hours=3.0,
+        comments="updated",
     )
     assert result["time_entry"]["hours"] == 3.0
     put_payload = next(c for c in client.calls if c[0] == "PUT")[2]["time_entry"]
@@ -211,11 +245,13 @@ async def test_update_returns_nothing_to_update_when_no_fields(cache: SchemaCach
 
 
 async def test_update_propagates_404(cache: SchemaCache) -> None:
-    client = FakeClient(errors={
-        ("PUT", "/time_entries/999.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("PUT", "/time_entries/999.json"): RedmineAPIError(
+                status_code=404, body={"errors": ["Not found"]}
+            ),
+        }
+    )
     result = await time_entries.update_time_entry(client, cache, 999, hours=1.0)
     assert result["error"] == "redmine_api_404"
 
@@ -234,10 +270,12 @@ async def test_delete_happy_path(cache: SchemaCache) -> None:
 
 
 async def test_delete_propagates_404(cache: SchemaCache) -> None:
-    client = FakeClient(errors={
-        ("DELETE", "/time_entries/999.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("DELETE", "/time_entries/999.json"): RedmineAPIError(
+                status_code=404, body={"errors": ["Not found"]}
+            ),
+        }
+    )
     result = await time_entries.delete_time_entry(client, cache, 999)
     assert result["error"] == "redmine_api_404"

@@ -29,7 +29,8 @@ async def list_memberships(
 
     try:
         resp = await client.get(
-            f"/projects/{project_id}/memberships.json", params=params,
+            f"/projects/{project_id}/memberships.json",
+            params=params,
         )
     except RedmineAPIError as e:
         return e.as_structured()

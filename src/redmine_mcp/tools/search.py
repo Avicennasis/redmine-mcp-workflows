@@ -16,10 +16,17 @@ from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import RedmineAPIError
 
-ALLOWED_RESOURCE_TYPES = frozenset({
-    "issues", "news", "documents", "changesets",
-    "wiki_pages", "messages", "projects",
-})
+ALLOWED_RESOURCE_TYPES = frozenset(
+    {
+        "issues",
+        "news",
+        "documents",
+        "changesets",
+        "wiki_pages",
+        "messages",
+        "projects",
+    }
+)
 ALLOWED_ATTACHMENT_MODES = frozenset({"0", "1", "only"})
 
 

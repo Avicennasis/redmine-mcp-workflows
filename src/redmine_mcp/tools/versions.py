@@ -36,7 +36,11 @@ from . import issues as issues_module
 
 ALLOWED_STATUSES: tuple[str, ...] = ("open", "locked", "closed")
 ALLOWED_SHARINGS: tuple[str, ...] = (
-    "none", "descendants", "hierarchy", "tree", "system",
+    "none",
+    "descendants",
+    "hierarchy",
+    "tree",
+    "system",
 )
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -173,7 +177,8 @@ async def create_version(
 
     try:
         resp = await client.post(
-            f"/projects/{project}/versions.json", json={"version": body},
+            f"/projects/{project}/versions.json",
+            json={"version": body},
         )
     except RedmineAPIError as e:
         return e.as_structured()
@@ -269,5 +274,8 @@ async def assign_issue_to_version(
     """
     payload: int | str = version_id if version_id else ""
     return await issues_module.update_issue(
-        client, cache, issue_id, fixed_version_id=payload,
+        client,
+        cache,
+        issue_id,
+        fixed_version_id=payload,
     )

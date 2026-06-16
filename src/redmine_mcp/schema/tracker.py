@@ -22,7 +22,9 @@ from ..client import RedmineClient
 async def refresh_global_enumerations(client: RedmineClient, cache: SchemaCache) -> None:
     """Populate ``cache_meta`` with the latest global lookups."""
     statuses = await client.get("/issue_statuses.json")
-    cache.put_meta_json("issue_statuses", statuses.get("issue_statuses", []) if isinstance(statuses, dict) else [])
+    cache.put_meta_json(
+        "issue_statuses", statuses.get("issue_statuses", []) if isinstance(statuses, dict) else []
+    )
 
     priorities = await client.get("/enumerations/issue_priorities.json")
     cache.put_meta_json(
@@ -111,6 +113,7 @@ async def describe_tracker(
         import contextlib
 
         from . import custom_fields as cf_module
+
         with contextlib.suppress(Exception):
             await cf_module.refresh_custom_fields(client, cache)
     result["custom_fields"] = cache.list_custom_fields(tracker_id=tracker_id)

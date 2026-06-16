@@ -51,13 +51,18 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 
 async def test_create_project(cache):
-    client = FakeClient({
-        ("POST", "/projects.json"): {
-            "project": {"id": 99, "name": "Test", "identifier": "test"},
-        },
-    })
+    client = FakeClient(
+        {
+            ("POST", "/projects.json"): {
+                "project": {"id": 99, "name": "Test", "identifier": "test"},
+            },
+        }
+    )
     result = await projects.create_project(
-        client, cache, name="Test", identifier="test",
+        client,
+        cache,
+        name="Test",
+        identifier="test",
     )
     assert result["project"]["id"] == 99
     assert result["source"] == "api"
@@ -76,13 +81,18 @@ async def test_create_project_empty_identifier(cache):
 
 
 async def test_update_project(cache):
-    client = FakeClient({
-        ("GET", "/projects/99.json"): {
-            "project": {"id": 99, "name": "Updated"},
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects/99.json"): {
+                "project": {"id": 99, "name": "Updated"},
+            },
+        }
+    )
     result = await projects.update_project(
-        client, cache, project_id=99, name="Updated",
+        client,
+        cache,
+        project_id=99,
+        name="Updated",
     )
     assert result["project"]["name"] == "Updated"
 
@@ -101,9 +111,11 @@ async def test_delete_project(cache):
 
 
 async def test_delete_project_404(cache):
-    client = FakeClient(errors={
-        ("DELETE", "/projects/999.json"): RedmineAPIError(status_code=404, body=""),
-    })
+    client = FakeClient(
+        errors={
+            ("DELETE", "/projects/999.json"): RedmineAPIError(status_code=404, body=""),
+        }
+    )
     result = await projects.delete_project(client, cache, project_id=999)
     assert result["error"] == "project_not_found"
 

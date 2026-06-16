@@ -51,9 +51,7 @@ def test_cache_ttl_falls_back_on_garbage() -> None:
 
 
 def test_extra_headers_parsed() -> None:
-    cfg = Config.from_env(
-        env={"REDMINE_HEADERS": "Authorization: Bearer abc, X-Trace-Id: xyz"}
-    )
+    cfg = Config.from_env(env={"REDMINE_HEADERS": "Authorization: Bearer abc, X-Trace-Id: xyz"})
     assert cfg.extra_headers == {"Authorization": "Bearer abc", "X-Trace-Id": "xyz"}
 
 
@@ -63,9 +61,7 @@ def test_extra_headers_ignores_malformed() -> None:
 
 
 def test_allowed_directories_list() -> None:
-    cfg = Config.from_env(
-        env={"REDMINE_MCP_ALLOWED_DIRECTORIES": "/tmp,/srv/uploads,/var/data"}
-    )
+    cfg = Config.from_env(env={"REDMINE_MCP_ALLOWED_DIRECTORIES": "/tmp,/srv/uploads,/var/data"})
     assert cfg.allowed_directories == (
         Path("/tmp"),
         Path("/srv/uploads"),
@@ -117,9 +113,11 @@ def test_enable_passthrough_falsey_values() -> None:
 
 def test_oauth_token_loaded_from_env_var(tmp_path: Path) -> None:
     """REDMINE_OAUTH_TOKEN env var lands on Config.oauth_token."""
-    cfg = Config.from_env(env={
-        "REDMINE_OAUTH_TOKEN": "doorkeeper-issued-token",
-    })
+    cfg = Config.from_env(
+        env={
+            "REDMINE_OAUTH_TOKEN": "doorkeeper-issued-token",
+        }
+    )
     assert cfg.oauth_token == "doorkeeper-issued-token"
     assert cfg.api_key is None
 

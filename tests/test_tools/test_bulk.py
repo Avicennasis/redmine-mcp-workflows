@@ -36,7 +36,10 @@ class _Sentinel:
 
 async def test_bulk_update_rejects_empty_issue_list(cache: SchemaCache) -> None:
     result = await bulk.bulk_update_issues(
-        _Sentinel(), cache, issue_ids=[], notes="anything",
+        _Sentinel(),
+        cache,
+        issue_ids=[],
+        notes="anything",
     )
     assert result["error"] == "validation_failed"
 
@@ -44,13 +47,16 @@ async def test_bulk_update_rejects_empty_issue_list(cache: SchemaCache) -> None:
 async def test_bulk_update_rejects_no_fields_supplied(cache: SchemaCache) -> None:
     """At least one updatable field must be provided."""
     result = await bulk.bulk_update_issues(
-        _Sentinel(), cache, issue_ids=[1, 2, 3],
+        _Sentinel(),
+        cache,
+        issue_ids=[1, 2, 3],
     )
     assert result["error"] == "validation_failed"
 
 
 async def test_bulk_update_all_succeed(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """All ids return success → succeeded list contains every id."""
     calls: list[dict[str, Any]] = []
@@ -62,7 +68,8 @@ async def test_bulk_update_all_succeed(
     monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
 
     result = await bulk.bulk_update_issues(
-        _Sentinel(), cache,
+        _Sentinel(),
+        cache,
         issue_ids=[10, 11, 12],
         notes="batch comment",
     )
@@ -74,9 +81,11 @@ async def test_bulk_update_all_succeed(
 
 
 async def test_bulk_update_collects_failures_per_issue(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One id errors → recorded in failed[], others still processed."""
+
     async def fake_update(client, cache, issue_id, **kwargs):
         if issue_id == 11:
             return {"error": "redmine_api_404", "hint": "gone"}
@@ -85,7 +94,8 @@ async def test_bulk_update_collects_failures_per_issue(
     monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
 
     result = await bulk.bulk_update_issues(
-        _Sentinel(), cache,
+        _Sentinel(),
+        cache,
         issue_ids=[10, 11, 12],
         notes="batch",
     )
@@ -96,7 +106,8 @@ async def test_bulk_update_collects_failures_per_issue(
 
 
 async def test_bulk_update_stop_on_error_short_circuits(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With stop_on_error=True, processing halts at the first failure."""
     seen: list[int] = []
@@ -110,7 +121,8 @@ async def test_bulk_update_stop_on_error_short_circuits(
     monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
 
     result = await bulk.bulk_update_issues(
-        _Sentinel(), cache,
+        _Sentinel(),
+        cache,
         issue_ids=[10, 11, 12],
         notes="batch",
         stop_on_error=True,
@@ -125,7 +137,8 @@ async def test_bulk_update_stop_on_error_short_circuits(
 
 
 async def test_bulk_update_propagates_all_supported_fields(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Every supported field flows through to update_issue."""
     captured: dict[str, Any] = {}
@@ -137,7 +150,8 @@ async def test_bulk_update_propagates_all_supported_fields(
     monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
 
     await bulk.bulk_update_issues(
-        _Sentinel(), cache,
+        _Sentinel(),
+        cache,
         issue_ids=[1],
         subject="new subject",
         description="new desc",
@@ -158,7 +172,10 @@ async def test_bulk_update_caps_batch_size(cache: SchemaCache) -> None:
     """Reject batches over MAX_BATCH_SIZE to avoid runaway calls."""
     too_many = list(range(1, bulk.MAX_BATCH_SIZE + 2))
     result = await bulk.bulk_update_issues(
-        _Sentinel(), cache, issue_ids=too_many, notes="x",
+        _Sentinel(),
+        cache,
+        issue_ids=too_many,
+        notes="x",
     )
     assert result["error"] == "batch_too_large"
     assert result["max_batch_size"] == bulk.MAX_BATCH_SIZE
@@ -175,7 +192,8 @@ async def test_bulk_close_rejects_empty_list(cache: SchemaCache) -> None:
 
 
 async def test_bulk_close_all_succeed(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_close(client, cache, issue_id, *, note=None):
         return {"issue": {"id": issue_id, "status": {"name": "Closed"}}}
@@ -183,16 +201,21 @@ async def test_bulk_close_all_succeed(
     monkeypatch.setattr(bulk.issues_module, "close_issue", fake_close)
 
     result = await bulk.bulk_close(
-        _Sentinel(), cache, issue_ids=[10, 11, 12], note="batched closure",
+        _Sentinel(),
+        cache,
+        issue_ids=[10, 11, 12],
+        note="batched closure",
     )
     assert result["succeeded"] == [10, 11, 12]
     assert result["failed"] == []
 
 
 async def test_bulk_close_records_workflow_disallowed_per_issue(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Workflow-blocked closures are surfaced like any other failure."""
+
     async def fake_close(client, cache, issue_id, *, note=None):
         if issue_id == 11:
             return {
@@ -205,7 +228,9 @@ async def test_bulk_close_records_workflow_disallowed_per_issue(
     monkeypatch.setattr(bulk.issues_module, "close_issue", fake_close)
 
     result = await bulk.bulk_close(
-        _Sentinel(), cache, issue_ids=[10, 11, 12],
+        _Sentinel(),
+        cache,
+        issue_ids=[10, 11, 12],
     )
     assert result["succeeded"] == [10, 12]
     assert len(result["failed"]) == 1
@@ -213,7 +238,8 @@ async def test_bulk_close_records_workflow_disallowed_per_issue(
 
 
 async def test_bulk_close_propagates_note_to_each(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     notes_seen: list[str | None] = []
 
@@ -223,13 +249,17 @@ async def test_bulk_close_propagates_note_to_each(
 
     monkeypatch.setattr(bulk.issues_module, "close_issue", fake_close)
     await bulk.bulk_close(
-        _Sentinel(), cache, issue_ids=[10, 11], note="cleanup pass",
+        _Sentinel(),
+        cache,
+        issue_ids=[10, 11],
+        note="cleanup pass",
     )
     assert notes_seen == ["cleanup pass", "cleanup pass"]
 
 
 async def test_bulk_close_omits_note_when_empty(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     notes_seen: list[str | None] = []
 
@@ -276,7 +306,8 @@ class _CreateFakeClient:
 
 async def test_bulk_create_rejects_bad_on_duplicate(cache: SchemaCache) -> None:
     result = await bulk.bulk_create_issues(
-        _CreateFakeClient(), cache,
+        _CreateFakeClient(),
+        cache,
         issues=[{"project": "p", "tracker": "t", "subject": "s"}],
         on_duplicate="invalid",
     )
@@ -285,7 +316,8 @@ async def test_bulk_create_rejects_bad_on_duplicate(cache: SchemaCache) -> None:
 
 async def test_bulk_create_rejects_missing_required_field(cache: SchemaCache) -> None:
     result = await bulk.bulk_create_issues(
-        _CreateFakeClient(), cache,
+        _CreateFakeClient(),
+        cache,
         issues=[{"project": "p", "tracker": "t"}],  # no subject
     )
     assert result["error"] == "validation_failed"
@@ -293,8 +325,7 @@ async def test_bulk_create_rejects_missing_required_field(cache: SchemaCache) ->
 
 async def test_bulk_create_caps_batch_size(cache: SchemaCache) -> None:
     too_many = [
-        {"project": "p", "tracker": "t", "subject": f"s{i}"}
-        for i in range(bulk.MAX_BATCH_SIZE + 1)
+        {"project": "p", "tracker": "t", "subject": f"s{i}"} for i in range(bulk.MAX_BATCH_SIZE + 1)
     ]
     result = await bulk.bulk_create_issues(_CreateFakeClient(), cache, issues=too_many)
     assert result["error"] == "batch_too_large"
@@ -308,7 +339,8 @@ async def test_bulk_create_empty_list_returns_empty_results(cache: SchemaCache) 
 
 
 async def test_bulk_create_happy_path(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     next_id = iter([101, 102, 103])
 
@@ -316,12 +348,12 @@ async def test_bulk_create_happy_path(
         return {"issue": {"id": next(next_id), "subject": kwargs["subject"]}}
 
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
-    specs = [
-        {"project": "claudecode", "tracker": "Bug", "subject": f"item {i}"}
-        for i in range(3)
-    ]
+    specs = [{"project": "claudecode", "tracker": "Bug", "subject": f"item {i}"} for i in range(3)]
     result = await bulk.bulk_create_issues(
-        _CreateFakeClient(), cache, issues=specs, pacing_seconds=0,
+        _CreateFakeClient(),
+        cache,
+        issues=specs,
+        pacing_seconds=0,
     )
     assert result["summary"] == {"total": 3, "created": 3, "skipped": 0, "failed": 0}
     statuses = [r["status"] for r in result["results"]]
@@ -330,7 +362,8 @@ async def test_bulk_create_happy_path(
 
 
 async def test_bulk_create_skip_dedups_existing_subject(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     create_calls: list[str] = []
 
@@ -339,18 +372,27 @@ async def test_bulk_create_skip_dedups_existing_subject(
         return {"issue": {"id": 999, "subject": kwargs["subject"]}}
 
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
-    client = _CreateFakeClient(existing={
-        ("simsyssites", "abc.com — add GA4"): [
-            {"id": 42, "subject": "abc.com — add GA4"},
-        ],
-    })
+    client = _CreateFakeClient(
+        existing={
+            ("simsyssites", "abc.com — add GA4"): [
+                {"id": 42, "subject": "abc.com — add GA4"},
+            ],
+        }
+    )
     result = await bulk.bulk_create_issues(
-        client, cache,
+        client,
+        cache,
         issues=[
-            {"project": "simsyssites", "tracker": "Feature",
-             "subject": "abc.com — add GA4"},                # duplicate → skip
-            {"project": "simsyssites", "tracker": "Feature",
-             "subject": "xyz.com — add GA4"},                # fresh → create
+            {
+                "project": "simsyssites",
+                "tracker": "Feature",
+                "subject": "abc.com — add GA4",
+            },  # duplicate → skip
+            {
+                "project": "simsyssites",
+                "tracker": "Feature",
+                "subject": "xyz.com — add GA4",
+            },  # fresh → create
         ],
         pacing_seconds=0,
     )
@@ -362,19 +404,24 @@ async def test_bulk_create_skip_dedups_existing_subject(
 
 
 async def test_bulk_create_dedup_requires_exact_subject_match(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Redmine's `subject=X` filter is substring-fuzzy; we exact-match
     client-side. Substring hits on the GET must NOT count as duplicates."""
+
     async def fake_create(client, cache, **kwargs):
         return {"issue": {"id": 999, "subject": kwargs["subject"]}}
 
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
-    client = _CreateFakeClient(existing={
-        ("p", "abc"): [{"id": 41, "subject": "abc widget"}],
-    })
+    client = _CreateFakeClient(
+        existing={
+            ("p", "abc"): [{"id": 41, "subject": "abc widget"}],
+        }
+    )
     result = await bulk.bulk_create_issues(
-        client, cache,
+        client,
+        cache,
         issues=[{"project": "p", "tracker": "Bug", "subject": "abc"}],
         pacing_seconds=0,
     )
@@ -383,17 +430,21 @@ async def test_bulk_create_dedup_requires_exact_subject_match(
 
 
 async def test_bulk_create_fail_mode_reports_duplicate_as_failure(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_create(client, cache, **kwargs):
         return {"issue": {"id": 999, "subject": kwargs["subject"]}}
 
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
-    client = _CreateFakeClient(existing={
-        ("p", "dup"): [{"id": 7, "subject": "dup"}],
-    })
+    client = _CreateFakeClient(
+        existing={
+            ("p", "dup"): [{"id": 7, "subject": "dup"}],
+        }
+    )
     result = await bulk.bulk_create_issues(
-        client, cache,
+        client,
+        cache,
         issues=[{"project": "p", "tracker": "Bug", "subject": "dup"}],
         on_duplicate="fail",
         pacing_seconds=0,
@@ -405,18 +456,23 @@ async def test_bulk_create_fail_mode_reports_duplicate_as_failure(
 
 
 async def test_bulk_create_create_anyway_skips_pre_check(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """on_duplicate='create_anyway' must not issue the lookup GET."""
+
     async def fake_create(client, cache, **kwargs):
         return {"issue": {"id": 999, "subject": kwargs["subject"]}}
 
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
-    client = _CreateFakeClient(existing={
-        ("p", "dup"): [{"id": 7, "subject": "dup"}],
-    })
+    client = _CreateFakeClient(
+        existing={
+            ("p", "dup"): [{"id": 7, "subject": "dup"}],
+        }
+    )
     result = await bulk.bulk_create_issues(
-        client, cache,
+        client,
+        cache,
         issues=[{"project": "p", "tracker": "Bug", "subject": "dup"}],
         on_duplicate="create_anyway",
         pacing_seconds=0,
@@ -426,7 +482,8 @@ async def test_bulk_create_create_anyway_skips_pre_check(
 
 
 async def test_bulk_create_mid_loop_failure_collected_without_halt(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     counter = iter(range(10))
 
@@ -439,7 +496,10 @@ async def test_bulk_create_mid_loop_failure_collected_without_halt(
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
     specs = [{"project": "p", "tracker": "Bug", "subject": f"s{i}"} for i in range(3)]
     result = await bulk.bulk_create_issues(
-        _CreateFakeClient(), cache, issues=specs, pacing_seconds=0,
+        _CreateFakeClient(),
+        cache,
+        issues=specs,
+        pacing_seconds=0,
     )
     statuses = [r["status"] for r in result["results"]]
     assert statuses == ["created", "failed", "created"]
@@ -447,7 +507,8 @@ async def test_bulk_create_mid_loop_failure_collected_without_halt(
 
 
 async def test_bulk_create_stop_on_error_lists_remainder(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     counter = iter(range(10))
 
@@ -460,7 +521,11 @@ async def test_bulk_create_stop_on_error_lists_remainder(
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
     specs = [{"project": "p", "tracker": "Bug", "subject": f"s{i}"} for i in range(4)]
     result = await bulk.bulk_create_issues(
-        _CreateFakeClient(), cache, issues=specs, pacing_seconds=0, stop_on_error=True,
+        _CreateFakeClient(),
+        cache,
+        issues=specs,
+        pacing_seconds=0,
+        stop_on_error=True,
     )
     assert result["summary"]["created"] == 1
     assert result["summary"]["failed"] == 1
@@ -470,7 +535,8 @@ async def test_bulk_create_stop_on_error_lists_remainder(
 
 
 async def test_bulk_create_forwards_optional_fields(
-    cache: SchemaCache, monkeypatch: pytest.MonkeyPatch,
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Only the keys present in the spec get forwarded to create_issue."""
     forwarded_kwargs: dict[str, Any] = {}
@@ -481,12 +547,18 @@ async def test_bulk_create_forwards_optional_fields(
 
     monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
     await bulk.bulk_create_issues(
-        _CreateFakeClient(), cache,
-        issues=[{
-            "project": "p", "tracker": "Bug", "subject": "s",
-            "due_date": "2026-05-17", "difficulty": "Easy",
-            "custom_fields": [{"id": 9, "value": "x"}],
-        }],
+        _CreateFakeClient(),
+        cache,
+        issues=[
+            {
+                "project": "p",
+                "tracker": "Bug",
+                "subject": "s",
+                "due_date": "2026-05-17",
+                "difficulty": "Easy",
+                "custom_fields": [{"id": 9, "value": "x"}],
+            }
+        ],
         pacing_seconds=0,
     )
     assert forwarded_kwargs["due_date"] == "2026-05-17"

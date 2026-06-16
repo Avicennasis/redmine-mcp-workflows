@@ -43,17 +43,19 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 
 async def test_list_messages_happy_path(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/boards/3/messages.json"): {
-            "messages": [
-                {"id": 11, "subject": "Welcome", "content": "..."},
-                {"id": 12, "subject": "Roadmap", "content": "..."},
-            ],
-            "total_count": 2,
-            "limit": 25,
-            "offset": 0,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/boards/3/messages.json"): {
+                "messages": [
+                    {"id": 11, "subject": "Welcome", "content": "..."},
+                    {"id": 12, "subject": "Roadmap", "content": "..."},
+                ],
+                "total_count": 2,
+                "limit": 25,
+                "offset": 0,
+            },
+        }
+    )
     result = await forums.list_messages(client, cache, board_id=3)
     assert result["board_id"] == 3
     assert result["total_count"] == 2
@@ -67,11 +69,16 @@ async def test_list_messages_happy_path(cache: SchemaCache) -> None:
 
 
 async def test_list_messages_propagates_pagination(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/boards/3/messages.json"): {
-            "messages": [], "total_count": 0, "limit": 5, "offset": 50,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/boards/3/messages.json"): {
+                "messages": [],
+                "total_count": 0,
+                "limit": 5,
+                "offset": 50,
+            },
+        }
+    )
     await forums.list_messages(client, cache, board_id=3, limit=5, offset=50)
     assert client.calls[-1][2] == {"limit": 5, "offset": 50}
 
@@ -85,11 +92,14 @@ async def test_list_messages_404_when_board_missing_or_module_disabled(
     cache: SchemaCache,
 ) -> None:
     """Common failure: boards module not enabled on the parent project."""
-    client = FakeClient(errors={
-        ("GET", "/boards/999/messages.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]},
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("GET", "/boards/999/messages.json"): RedmineAPIError(
+                status_code=404,
+                body={"errors": ["Not found"]},
+            ),
+        }
+    )
     result = await forums.list_messages(client, cache, board_id=999)
     assert result["error"] == "redmine_api_404"
 

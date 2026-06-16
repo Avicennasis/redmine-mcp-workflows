@@ -74,9 +74,7 @@ _DDL_V1 = (
 
 def apply_migrations(conn: sqlite3.Connection) -> None:
     """Bring the database up to ``CURRENT_SCHEMA_VERSION``."""
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS _schema_version (version INTEGER PRIMARY KEY)"
-    )
+    conn.execute("CREATE TABLE IF NOT EXISTS _schema_version (version INTEGER PRIMARY KEY)")
     cur = conn.execute("SELECT version FROM _schema_version")
     row = cur.fetchone()
     current = row[0] if row else 0
@@ -120,9 +118,7 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
             )
             """
         )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_custom_fields_name ON custom_fields(name)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_custom_fields_name ON custom_fields(name)")
         conn.execute("DELETE FROM _schema_version")
         conn.execute("INSERT INTO _schema_version (version) VALUES (?)", (3,))
 

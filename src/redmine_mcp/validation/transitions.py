@@ -108,11 +108,14 @@ def has_any_observation(
     """
     role_pool = _role_set(role_ids)
     for rid in role_pool:
-        if cache.get_workflow_observation(
-            tracker_id=tracker_id,
-            role_id=rid,
-            from_status_id=from_status_id,
-            to_status_id=to_status_id,
-        ) is not None:
+        if (
+            cache.get_workflow_observation(
+                tracker_id=tracker_id,
+                role_id=rid,
+                from_status_id=from_status_id,
+                to_status_id=to_status_id,
+            )
+            is not None
+        ):
             return True
     return False

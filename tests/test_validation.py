@@ -32,15 +32,22 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 
 def test_is_disallowed_returns_none_when_unobserved(cache: SchemaCache) -> None:
-    assert transitions.is_disallowed(
-        cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
-    ) is None
+    assert (
+        transitions.is_disallowed(
+            cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
+        )
+        is None
+    )
 
 
 def test_is_disallowed_returns_hit_when_role_matches(cache: SchemaCache) -> None:
     cache.record_workflow_observation(
-        tracker_id=1, role_id=4, from_status_id=1, to_status_id=5,
-        outcome="disallowed", error_text="Status is not allowed",
+        tracker_id=1,
+        role_id=4,
+        from_status_id=1,
+        to_status_id=5,
+        outcome="disallowed",
+        error_text="Status is not allowed",
     )
     hit = transitions.is_disallowed(
         cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=5
@@ -52,7 +59,10 @@ def test_is_disallowed_returns_hit_when_role_matches(cache: SchemaCache) -> None
 
 def test_is_disallowed_includes_role_zero_global_admin(cache: SchemaCache) -> None:
     cache.record_workflow_observation(
-        tracker_id=1, role_id=0, from_status_id=1, to_status_id=5,
+        tracker_id=1,
+        role_id=0,
+        from_status_id=1,
+        to_status_id=5,
         outcome="disallowed",
     )
     hit = transitions.is_disallowed(
@@ -66,13 +76,17 @@ def test_is_disallowed_skips_allowed_observations(cache: SchemaCache) -> None:
     cache.record_workflow_observation(
         tracker_id=1, role_id=4, from_status_id=1, to_status_id=2, outcome="allowed"
     )
-    assert transitions.is_disallowed(
-        cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
-    ) is None
+    assert (
+        transitions.is_disallowed(
+            cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
+        )
+        is None
+    )
 
 
 def test_is_disallowed_picks_most_recent_when_multiple_roles(cache: SchemaCache) -> None:
     import time
+
     cache.record_workflow_observation(
         tracker_id=1, role_id=3, from_status_id=1, to_status_id=5, outcome="disallowed"
     )
@@ -97,22 +111,26 @@ def test_allowed_next_returns_observed_to_states(cache: SchemaCache) -> None:
     cache.record_workflow_observation(
         tracker_id=1, role_id=4, from_status_id=1, to_status_id=5, outcome="disallowed"
     )
-    out = transitions.allowed_next(
-        cache, tracker_id=1, role_ids=[4], from_status_id=1
-    )
+    out = transitions.allowed_next(cache, tracker_id=1, role_ids=[4], from_status_id=1)
     assert sorted(out) == [2, 3]
 
 
 def test_has_any_observation(cache: SchemaCache) -> None:
-    assert transitions.has_any_observation(
-        cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
-    ) is False
+    assert (
+        transitions.has_any_observation(
+            cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
+        )
+        is False
+    )
     cache.record_workflow_observation(
         tracker_id=1, role_id=4, from_status_id=1, to_status_id=2, outcome="allowed"
     )
-    assert transitions.has_any_observation(
-        cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
-    ) is True
+    assert (
+        transitions.has_any_observation(
+            cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=2
+        )
+        is True
+    )
 
 
 # ---------------------------------------------------------------------
@@ -128,9 +146,7 @@ def test_validate_required_create_complete_payload() -> None:
 
 
 def test_validate_required_create_missing_subject() -> None:
-    errs = field_validators.validate_required(
-        {"project": "claudecode", "tracker": 1}, op="create"
-    )
+    errs = field_validators.validate_required({"project": "claudecode", "tracker": 1}, op="create")
     assert len(errs) == 1
     assert isinstance(errs[0], RequiredFieldMissing)
     assert errs[0].as_dict()["field"] == "subject"
@@ -155,24 +171,18 @@ def test_validate_custom_fields_no_entries_no_errors() -> None:
 
 
 def test_validate_custom_fields_must_be_list() -> None:
-    errs = field_validators.validate_custom_fields(
-        {"custom_fields": {"id": 1, "value": "x"}}
-    )
+    errs = field_validators.validate_custom_fields({"custom_fields": {"id": 1, "value": "x"}})
     assert len(errs) == 1
     assert isinstance(errs[0], CustomFieldShapeError)
 
 
 def test_validate_custom_fields_entry_must_be_dict() -> None:
-    errs = field_validators.validate_custom_fields(
-        {"custom_fields": ["not a dict"]}
-    )
+    errs = field_validators.validate_custom_fields({"custom_fields": ["not a dict"]})
     assert any(isinstance(e, CustomFieldShapeError) for e in errs)
 
 
 def test_validate_custom_fields_missing_keys() -> None:
-    errs = field_validators.validate_custom_fields(
-        {"custom_fields": [{"id": 1}, {"value": "x"}]}
-    )
+    errs = field_validators.validate_custom_fields({"custom_fields": [{"id": 1}, {"value": "x"}]})
     assert len(errs) == 2
     reasons = [e.as_dict()["reason"] for e in errs]
     assert any("'value'" in r for r in reasons)
@@ -194,9 +204,7 @@ def test_validate_custom_fields_unknown_id_when_known_set_provided() -> None:
 
 def test_validate_custom_fields_skips_id_check_when_known_set_absent() -> None:
     # Without a known_field_ids list we trust the API; only shape errors fire.
-    errs = field_validators.validate_custom_fields(
-        {"custom_fields": [{"id": 99, "value": "x"}]}
-    )
+    errs = field_validators.validate_custom_fields({"custom_fields": [{"id": 99, "value": "x"}]})
     assert errs == []
 
 

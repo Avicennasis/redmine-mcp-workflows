@@ -116,27 +116,19 @@ def validate_custom_fields(
 
     for entry in raw:
         if not isinstance(entry, dict):
-            errors.append(
-                CustomFieldShapeError(entry=entry, reason="entry must be a dict")
-            )
+            errors.append(CustomFieldShapeError(entry=entry, reason="entry must be a dict"))
             continue
         if "id" not in entry:
-            errors.append(
-                CustomFieldShapeError(entry=entry, reason="missing 'id' key")
-            )
+            errors.append(CustomFieldShapeError(entry=entry, reason="missing 'id' key"))
             continue
         if "value" not in entry:
-            errors.append(
-                CustomFieldShapeError(entry=entry, reason="missing 'value' key")
-            )
+            errors.append(CustomFieldShapeError(entry=entry, reason="missing 'value' key"))
             continue
         if known_field_ids is not None:
             try:
                 fid = int(entry["id"])
             except (TypeError, ValueError):
-                errors.append(
-                    CustomFieldShapeError(entry=entry, reason="'id' must be an integer")
-                )
+                errors.append(CustomFieldShapeError(entry=entry, reason="'id' must be an integer"))
                 continue
             if fid not in known_field_ids:
                 errors.append(

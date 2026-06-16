@@ -80,9 +80,7 @@ async def list_watchers(
     top-level field so callers don't have to dig through the issue
     payload.
     """
-    result = await issues_module.get_issue(
-        client, cache, issue_id, include="watchers"
-    )
+    result = await issues_module.get_issue(client, cache, issue_id, include="watchers")
     if "error" in result:
         return result
     issue = result.get("issue") or {}

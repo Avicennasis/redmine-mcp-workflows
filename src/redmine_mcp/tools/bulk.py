@@ -123,12 +123,15 @@ async def bulk_update_issues(
 
     for idx, issue_id in enumerate(issue_ids):
         result = await issues_module.update_issue(
-            client, cache, issue_id, **update_kwargs,
+            client,
+            cache,
+            issue_id,
+            **update_kwargs,
         )
         if isinstance(result, dict) and "error" in result:
             failed.append({"issue_id": issue_id, **result})
             if stop_on_error:
-                skipped = list(issue_ids[idx + 1:])
+                skipped = list(issue_ids[idx + 1 :])
                 break
         else:
             succeeded.append(issue_id)
@@ -235,9 +238,7 @@ async def bulk_create_issues(
             "max_batch_size": MAX_BATCH_SIZE,
         }
     if pacing_seconds < 0:
-        return _validation_error(
-            "pacing_seconds must be non-negative.", field="pacing_seconds"
-        )
+        return _validation_error("pacing_seconds must be non-negative.", field="pacing_seconds")
 
     # Pre-validate every spec has the required keys before any I/O — fail
     # fast rather than POST half the batch then bail.
@@ -270,28 +271,32 @@ async def bulk_create_issues(
             existing_id = await _find_existing_by_subject(client, project, subject)
             if existing_id is not None:
                 if on_duplicate == "skip":
-                    results.append({
-                        "subject": subject,
-                        "status": "skipped",
-                        "duplicate_of": existing_id,
-                    })
+                    results.append(
+                        {
+                            "subject": subject,
+                            "status": "skipped",
+                            "duplicate_of": existing_id,
+                        }
+                    )
                     summary["skipped"] += 1
                     continue
                 # on_duplicate == "fail"
-                results.append({
-                    "subject": subject,
-                    "status": "failed",
-                    "error": "duplicate_subject",
-                    "hint": (
-                        f"Issue with subject {subject!r} already exists in "
-                        f"project {project!r} as #{existing_id}."
-                    ),
-                    "duplicate_of": existing_id,
-                })
+                results.append(
+                    {
+                        "subject": subject,
+                        "status": "failed",
+                        "error": "duplicate_subject",
+                        "hint": (
+                            f"Issue with subject {subject!r} already exists in "
+                            f"project {project!r} as #{existing_id}."
+                        ),
+                        "duplicate_of": existing_id,
+                    }
+                )
                 summary["failed"] += 1
                 if stop_on_error:
                     skipped_for_stop_on_error = [
-                        {"subject": s["subject"]} for s in issues[idx + 1:]
+                        {"subject": s["subject"]} for s in issues[idx + 1 :]
                     ]
                     break
                 continue
@@ -303,8 +308,14 @@ async def bulk_create_issues(
             "subject": subject,
         }
         for k in (
-            "description", "priority", "status", "assigned_to_id",
-            "difficulty", "due_date", "start_date", "done_ratio",
+            "description",
+            "priority",
+            "status",
+            "assigned_to_id",
+            "difficulty",
+            "due_date",
+            "start_date",
+            "done_ratio",
             "custom_fields",
         ):
             if k in spec and spec[k] is not None:
@@ -312,26 +323,28 @@ async def bulk_create_issues(
 
         result = await issues_module.create_issue(client, cache, **create_kwargs)
         if isinstance(result, dict) and "error" in result:
-            results.append({
-                "subject": subject,
-                "status": "failed",
-                "error": result.get("error"),
-                "hint": result.get("hint"),
-            })
+            results.append(
+                {
+                    "subject": subject,
+                    "status": "failed",
+                    "error": result.get("error"),
+                    "hint": result.get("hint"),
+                }
+            )
             summary["failed"] += 1
             if stop_on_error:
-                skipped_for_stop_on_error = [
-                    {"subject": s["subject"]} for s in issues[idx + 1:]
-                ]
+                skipped_for_stop_on_error = [{"subject": s["subject"]} for s in issues[idx + 1 :]]
                 break
             continue
 
         new_issue = (result or {}).get("issue") or {}
-        results.append({
-            "subject": subject,
-            "status": "created",
-            "id": _try_int(new_issue.get("id")),
-        })
+        results.append(
+            {
+                "subject": subject,
+                "status": "created",
+                "id": _try_int(new_issue.get("id")),
+            }
+        )
         summary["created"] += 1
 
     summary_with_total = {"total": len(issues), **summary}
@@ -359,12 +372,15 @@ async def bulk_close(
 
     for idx, issue_id in enumerate(issue_ids):
         result = await issues_module.close_issue(
-            client, cache, issue_id, note=note,
+            client,
+            cache,
+            issue_id,
+            note=note,
         )
         if isinstance(result, dict) and "error" in result:
             failed.append({"issue_id": issue_id, **result})
             if stop_on_error:
-                skipped = list(issue_ids[idx + 1:])
+                skipped = list(issue_ids[idx + 1 :])
                 break
         else:
             succeeded.append(issue_id)

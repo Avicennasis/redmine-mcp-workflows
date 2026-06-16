@@ -65,9 +65,7 @@ async def test_add_comment_happy_path(cache: SchemaCache) -> None:
 
 async def test_add_comment_private_flag_sets_private_notes(cache: SchemaCache) -> None:
     client = FakeClient({("PUT", "/issues/42.json"): None})
-    result = await comments.add_comment(
-        client, cache, 42, "internal context", private=True
-    )
+    result = await comments.add_comment(client, cache, 42, "internal context", private=True)
     assert result["private"] is True
     put_payload = client.calls[-1][2]
     assert put_payload["issue"]["private_notes"] is True
@@ -83,11 +81,13 @@ async def test_add_comment_rejects_empty_note(cache: SchemaCache) -> None:
 
 
 async def test_add_comment_propagates_404(cache: SchemaCache) -> None:
-    client = FakeClient(errors={
-        ("PUT", "/issues/999.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("PUT", "/issues/999.json"): RedmineAPIError(
+                status_code=404, body={"errors": ["Not found"]}
+            ),
+        }
+    )
     result = await comments.add_comment(client, cache, 999, "hi")
     assert result["error"] == "redmine_api_404"
     assert result["status_code"] == 404
@@ -95,11 +95,13 @@ async def test_add_comment_propagates_404(cache: SchemaCache) -> None:
 
 async def test_add_comment_propagates_403(cache: SchemaCache) -> None:
     """Server-side role rejection (the case our client-side check skips)."""
-    client = FakeClient(errors={
-        ("PUT", "/issues/42.json"): RedmineAPIError(
-            status_code=403, body={"errors": ["You are not authorized"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("PUT", "/issues/42.json"): RedmineAPIError(
+                status_code=403, body={"errors": ["You are not authorized"]}
+            ),
+        }
+    )
     result = await comments.add_comment(client, cache, 42, "denied")
     assert result["error"] == "redmine_api_403"
 
@@ -110,23 +112,39 @@ async def test_add_comment_propagates_403(cache: SchemaCache) -> None:
 
 
 async def test_get_journals_returns_journal_list(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/issues/42.json"): {
-            "issue": {
-                "id": 42,
-                "subject": "demo",
-                "journals": [
-                    {"id": 1, "user": {"id": 5, "name": "Léon"},
-                     "notes": "first comment", "created_on": "2026-05-04T10:00:00Z",
-                     "details": []},
-                    {"id": 2, "user": {"id": 1, "name": "Avic"},
-                     "notes": "", "created_on": "2026-05-04T10:05:00Z",
-                     "details": [{"property": "attr", "name": "subject",
-                                  "old_value": "old", "new_value": "demo"}]},
-                ],
-            }
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): {
+                "issue": {
+                    "id": 42,
+                    "subject": "demo",
+                    "journals": [
+                        {
+                            "id": 1,
+                            "user": {"id": 5, "name": "Léon"},
+                            "notes": "first comment",
+                            "created_on": "2026-05-04T10:00:00Z",
+                            "details": [],
+                        },
+                        {
+                            "id": 2,
+                            "user": {"id": 1, "name": "Avic"},
+                            "notes": "",
+                            "created_on": "2026-05-04T10:05:00Z",
+                            "details": [
+                                {
+                                    "property": "attr",
+                                    "name": "subject",
+                                    "old_value": "old",
+                                    "new_value": "demo",
+                                }
+                            ],
+                        },
+                    ],
+                }
+            },
+        }
+    )
     result = await comments.get_journals(client, cache, 42)
     assert result["issue_id"] == 42
     assert result["source"] == "api"
@@ -138,20 +156,24 @@ async def test_get_journals_returns_journal_list(cache: SchemaCache) -> None:
 
 
 async def test_get_journals_empty_when_issue_has_none(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/issues/42.json"): {"issue": {"id": 42, "subject": "no comments"}},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): {"issue": {"id": 42, "subject": "no comments"}},
+        }
+    )
     result = await comments.get_journals(client, cache, 42)
     assert result["journals"] == []
     assert result["issue_id"] == 42
 
 
 async def test_get_journals_propagates_404(cache: SchemaCache) -> None:
-    client = FakeClient(errors={
-        ("GET", "/issues/999.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("GET", "/issues/999.json"): RedmineAPIError(
+                status_code=404, body={"errors": ["Not found"]}
+            ),
+        }
+    )
     # get_issue catches the RedmineAPIError and returns it as a structured dict
     # only when called from inside _wrap; called directly it raises. comments.get_journals
     # invokes get_issue directly, so the exception surfaces here.
@@ -195,21 +217,25 @@ async def test_update_journal_empty_notes_clears(cache: SchemaCache) -> None:
 
 
 async def test_update_journal_propagates_404(cache: SchemaCache) -> None:
-    client = FakeClient(errors={
-        ("PUT", "/journals/999.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("PUT", "/journals/999.json"): RedmineAPIError(
+                status_code=404, body={"errors": ["Not found"]}
+            ),
+        }
+    )
     result = await comments.update_journal(client, cache, 999, "hi")
     assert result["error"] == "redmine_api_404"
     assert result["status_code"] == 404
 
 
 async def test_update_journal_propagates_403(cache: SchemaCache) -> None:
-    client = FakeClient(errors={
-        ("PUT", "/journals/42.json"): RedmineAPIError(
-            status_code=403, body={"errors": ["You are not authorized"]}
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("PUT", "/journals/42.json"): RedmineAPIError(
+                status_code=403, body={"errors": ["You are not authorized"]}
+            ),
+        }
+    )
     result = await comments.update_journal(client, cache, 42, "denied")
     assert result["error"] == "redmine_api_403"

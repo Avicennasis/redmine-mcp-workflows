@@ -139,9 +139,7 @@ def test_is_path_allowed_resolves_symlink_escape(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------
 
 
-async def test_upload_rejects_path_outside_allowlist(
-    cache: SchemaCache, tmp_path: Path
-) -> None:
+async def test_upload_rejects_path_outside_allowlist(cache: SchemaCache, tmp_path: Path) -> None:
     """A file that doesn't fall under any allowed root is denied without I/O."""
     other = tmp_path / "other"
     other.mkdir()
@@ -158,12 +156,12 @@ async def test_upload_rejects_path_outside_allowlist(
     assert client.calls == []
 
 
-async def test_upload_rejects_nonexistent_path(
-    cache: SchemaCache, tmp_path: Path
-) -> None:
+async def test_upload_rejects_nonexistent_path(cache: SchemaCache, tmp_path: Path) -> None:
     client = FakeClient()
     result = await attachments.upload_attachment(
-        client, cache, str(tmp_path / "ghost.txt"),
+        client,
+        cache,
+        str(tmp_path / "ghost.txt"),
         allowed_directories=(tmp_path,),
     )
     assert result["error"] == "attachment_path_denied"
@@ -175,14 +173,12 @@ async def test_upload_happy_path_no_issue_attach(
     cache: SchemaCache, sandbox: tuple[Path, tuple[Path, ...]]
 ) -> None:
     f, allowed = sandbox
-    client = FakeClient({
-        ("POST_BIN", "/uploads.json"): {
-            "upload": {"token": "abc123", "id": 7}
-        },
-    })
-    result = await attachments.upload_attachment(
-        client, cache, str(f), allowed_directories=allowed
+    client = FakeClient(
+        {
+            ("POST_BIN", "/uploads.json"): {"upload": {"token": "abc123", "id": 7}},
+        }
     )
+    result = await attachments.upload_attachment(client, cache, str(f), allowed_directories=allowed)
     assert result["upload"]["token"] == "abc123"
     assert result["upload"]["filename"] == "sample.txt"
     assert result["upload"]["size"] == len("hello world\n")
@@ -196,16 +192,20 @@ async def test_upload_happy_path_attaches_to_issue(
     cache: SchemaCache, sandbox: tuple[Path, tuple[Path, ...]]
 ) -> None:
     f, allowed = sandbox
-    client = FakeClient({
-        ("POST_BIN", "/uploads.json"): {"upload": {"token": "tok", "id": 9}},
-        ("PUT", "/issues/42.json"): None,
-        # Post-PUT verify GET (ClaudeCode#3139) — attachment is present.
-        ("GET", "/issues/42.json"): {
-            "issue": {"id": 42, "attachments": [{"id": 100, "filename": "sample.txt"}]},
-        },
-    })
+    client = FakeClient(
+        {
+            ("POST_BIN", "/uploads.json"): {"upload": {"token": "tok", "id": 9}},
+            ("PUT", "/issues/42.json"): None,
+            # Post-PUT verify GET (ClaudeCode#3139) — attachment is present.
+            ("GET", "/issues/42.json"): {
+                "issue": {"id": 42, "attachments": [{"id": 100, "filename": "sample.txt"}]},
+            },
+        }
+    )
     result = await attachments.upload_attachment(
-        client, cache, str(f),
+        client,
+        cache,
+        str(f),
         allowed_directories=allowed,
         issue_id=42,
         description="logs from incident",
@@ -226,14 +226,14 @@ async def test_upload_propagates_post_422(
     cache: SchemaCache, sandbox: tuple[Path, tuple[Path, ...]]
 ) -> None:
     f, allowed = sandbox
-    client = FakeClient(errors={
-        ("POST_BIN", "/uploads.json"): RedmineAPIError(
-            status_code=422, body={"errors": ["File too large"]}
-        ),
-    })
-    result = await attachments.upload_attachment(
-        client, cache, str(f), allowed_directories=allowed
+    client = FakeClient(
+        errors={
+            ("POST_BIN", "/uploads.json"): RedmineAPIError(
+                status_code=422, body={"errors": ["File too large"]}
+            ),
+        }
     )
+    result = await attachments.upload_attachment(client, cache, str(f), allowed_directories=allowed)
     assert result["error"] == "redmine_api_422"
     assert result["status_code"] == 422
 
@@ -254,7 +254,11 @@ async def test_upload_attach_failure_returns_token_for_retry(
         },
     )
     result = await attachments.upload_attachment(
-        client, cache, str(f), allowed_directories=allowed, issue_id=42,
+        client,
+        cache,
+        str(f),
+        allowed_directories=allowed,
+        issue_id=42,
     )
     assert result["error"] == "redmine_api_422"
     # Token should still be exposed so the caller can retry the attach.
@@ -266,12 +270,12 @@ async def test_upload_handles_malformed_upload_response(
     cache: SchemaCache, sandbox: tuple[Path, tuple[Path, ...]]
 ) -> None:
     f, allowed = sandbox
-    client = FakeClient({
-        ("POST_BIN", "/uploads.json"): {"unexpected": "shape"},
-    })
-    result = await attachments.upload_attachment(
-        client, cache, str(f), allowed_directories=allowed
+    client = FakeClient(
+        {
+            ("POST_BIN", "/uploads.json"): {"unexpected": "shape"},
+        }
     )
+    result = await attachments.upload_attachment(client, cache, str(f), allowed_directories=allowed)
     assert result["error"] == "upload_response_malformed"
 
 
@@ -286,17 +290,21 @@ async def test_upload_recovers_from_silent_drop(
     # Zero out the backoffs so the test doesn't actually sleep.
     monkeypatch.setattr(attachments, "ATTACHMENT_VERIFY_BACKOFFS", (0.0, 0.0))
     f, allowed = sandbox
-    client = FakeClient({
-        ("POST_BIN", "/uploads.json"): {"upload": {"token": "tok", "id": 9}},
-        ("PUT", "/issues/42.json"): None,
-        # First GET: no attachment (silent drop). Second GET: attachment present.
-        ("GET", "/issues/42.json"): [
-            {"issue": {"id": 42, "attachments": []}},
-            {"issue": {"id": 42, "attachments": [{"id": 100, "filename": "sample.txt"}]}},
-        ],
-    })
+    client = FakeClient(
+        {
+            ("POST_BIN", "/uploads.json"): {"upload": {"token": "tok", "id": 9}},
+            ("PUT", "/issues/42.json"): None,
+            # First GET: no attachment (silent drop). Second GET: attachment present.
+            ("GET", "/issues/42.json"): [
+                {"issue": {"id": 42, "attachments": []}},
+                {"issue": {"id": 42, "attachments": [{"id": 100, "filename": "sample.txt"}]}},
+            ],
+        }
+    )
     result = await attachments.upload_attachment(
-        client, cache, str(f),
+        client,
+        cache,
+        str(f),
         allowed_directories=allowed,
         issue_id=42,
     )
@@ -316,14 +324,18 @@ async def test_upload_silent_drop_persistent_returns_structured_error(
     error preserving the upload token so the caller can recover manually."""
     monkeypatch.setattr(attachments, "ATTACHMENT_VERIFY_BACKOFFS", (0.0, 0.0))
     f, allowed = sandbox
-    client = FakeClient({
-        ("POST_BIN", "/uploads.json"): {"upload": {"token": "T", "id": 9}},
-        ("PUT", "/issues/42.json"): None,
-        # Every GET shows attachments empty — silent drops all the way down.
-        ("GET", "/issues/42.json"): {"issue": {"id": 42, "attachments": []}},
-    })
+    client = FakeClient(
+        {
+            ("POST_BIN", "/uploads.json"): {"upload": {"token": "T", "id": 9}},
+            ("PUT", "/issues/42.json"): None,
+            # Every GET shows attachments empty — silent drops all the way down.
+            ("GET", "/issues/42.json"): {"issue": {"id": 42, "attachments": []}},
+        }
+    )
     result = await attachments.upload_attachment(
-        client, cache, str(f),
+        client,
+        cache,
+        str(f),
         allowed_directories=allowed,
         issue_id=42,
     )
@@ -344,9 +356,7 @@ async def test_upload_silent_drop_persistent_returns_structured_error(
 
 def test_save_path_allowed_under_allowed_root_no_existing_file(tmp_path: Path) -> None:
     target = tmp_path / "out.bin"
-    ok, reason = attachments._is_save_path_allowed(
-        target, (tmp_path,), overwrite=False
-    )
+    ok, reason = attachments._is_save_path_allowed(target, (tmp_path,), overwrite=False)
     assert ok is True
     assert reason == "ok"
 
@@ -374,9 +384,7 @@ def test_save_path_rejects_missing_parent(tmp_path: Path) -> None:
 def test_save_path_rejects_existing_file_without_overwrite(tmp_path: Path) -> None:
     target = tmp_path / "exists.bin"
     target.write_text("x")
-    ok, reason = attachments._is_save_path_allowed(
-        target, (tmp_path,), overwrite=False
-    )
+    ok, reason = attachments._is_save_path_allowed(target, (tmp_path,), overwrite=False)
     assert ok is False
     assert reason == "exists_no_overwrite"
 
@@ -384,9 +392,7 @@ def test_save_path_rejects_existing_file_without_overwrite(tmp_path: Path) -> No
 def test_save_path_allows_existing_file_with_overwrite(tmp_path: Path) -> None:
     target = tmp_path / "exists.bin"
     target.write_text("x")
-    ok, reason = attachments._is_save_path_allowed(
-        target, (tmp_path,), overwrite=True
-    )
+    ok, reason = attachments._is_save_path_allowed(target, (tmp_path,), overwrite=True)
     assert ok is True
     assert reason == "ok"
 
@@ -400,9 +406,7 @@ def test_save_path_resolves_symlink_parent_escape(tmp_path: Path) -> None:
     decoy = allowed / "decoy"
     decoy.symlink_to(outside)
     target = decoy / "out.bin"
-    ok, reason = attachments._is_save_path_allowed(
-        target, (allowed,), overwrite=False
-    )
+    ok, reason = attachments._is_save_path_allowed(target, (allowed,), overwrite=False)
     assert ok is False
     assert reason == "outside_allowlist"
 
@@ -416,18 +420,25 @@ async def test_download_writes_bytes_and_returns_metadata(
     cache: SchemaCache, tmp_path: Path
 ) -> None:
     payload = b"hello downloaded\n"
-    client = FakeClient({
-        ("GET", "/attachments/8.json"): {
-            "attachment": {
-                "id": 8, "filename": "demo.txt",
-                "filesize": len(payload), "content_type": "text/plain",
+    client = FakeClient(
+        {
+            ("GET", "/attachments/8.json"): {
+                "attachment": {
+                    "id": 8,
+                    "filename": "demo.txt",
+                    "filesize": len(payload),
+                    "content_type": "text/plain",
+                },
             },
-        },
-        ("GET_BIN", "/attachments/download/8/demo.txt"): payload,
-    })
+            ("GET_BIN", "/attachments/download/8/demo.txt"): payload,
+        }
+    )
     save_to = tmp_path / "saved.txt"
     result = await attachments.download_attachment(
-        client, cache, 8, str(save_to),
+        client,
+        cache,
+        8,
+        str(save_to),
         allowed_directories=(tmp_path,),
     )
     assert result["size"] == len(payload)
@@ -450,7 +461,10 @@ async def test_download_rejects_save_path_outside_allowlist(
     allowed_root.mkdir()
     client = FakeClient()
     result = await attachments.download_attachment(
-        client, cache, 8, str(other / "x.bin"),
+        client,
+        cache,
+        8,
+        str(other / "x.bin"),
         allowed_directories=(allowed_root,),
     )
     assert result["error"] == "attachment_path_denied"
@@ -465,7 +479,10 @@ async def test_download_rejects_existing_file_without_overwrite(
     target.write_text("keep me")
     client = FakeClient()
     result = await attachments.download_attachment(
-        client, cache, 8, str(target),
+        client,
+        cache,
+        8,
+        str(target),
         allowed_directories=(tmp_path,),
     )
     assert result["error"] == "attachment_path_denied"
@@ -481,17 +498,24 @@ async def test_download_overwrites_existing_when_flag_set(
     target = tmp_path / "out.txt"
     target.write_text("OLD")
     payload = b"NEW"
-    client = FakeClient({
-        ("GET", "/attachments/8.json"): {
-            "attachment": {
-                "id": 8, "filename": "out.txt",
-                "filesize": len(payload), "content_type": "text/plain",
+    client = FakeClient(
+        {
+            ("GET", "/attachments/8.json"): {
+                "attachment": {
+                    "id": 8,
+                    "filename": "out.txt",
+                    "filesize": len(payload),
+                    "content_type": "text/plain",
+                },
             },
-        },
-        ("GET_BIN", "/attachments/download/8/out.txt"): payload,
-    })
+            ("GET_BIN", "/attachments/download/8/out.txt"): payload,
+        }
+    )
     result = await attachments.download_attachment(
-        client, cache, 8, str(target),
+        client,
+        cache,
+        8,
+        str(target),
         allowed_directories=(tmp_path,),
         overwrite=True,
     )
@@ -504,18 +528,25 @@ async def test_download_rejects_size_mismatch_without_writing(
 ) -> None:
     """Short read should fail loudly rather than save a corrupt file."""
     payload = b"short"
-    client = FakeClient({
-        ("GET", "/attachments/8.json"): {
-            "attachment": {
-                "id": 8, "filename": "demo.bin",
-                "filesize": 9999, "content_type": "application/octet-stream",
+    client = FakeClient(
+        {
+            ("GET", "/attachments/8.json"): {
+                "attachment": {
+                    "id": 8,
+                    "filename": "demo.bin",
+                    "filesize": 9999,
+                    "content_type": "application/octet-stream",
+                },
             },
-        },
-        ("GET_BIN", "/attachments/download/8/demo.bin"): payload,
-    })
+            ("GET_BIN", "/attachments/download/8/demo.bin"): payload,
+        }
+    )
     save_to = tmp_path / "should_not_exist.bin"
     result = await attachments.download_attachment(
-        client, cache, 8, str(save_to),
+        client,
+        cache,
+        8,
+        str(save_to),
         allowed_directories=(tmp_path,),
     )
     assert result["error"] == "attachment_size_mismatch"
@@ -524,29 +555,35 @@ async def test_download_rejects_size_mismatch_without_writing(
     assert not save_to.exists()
 
 
-async def test_download_propagates_404_metadata(
-    cache: SchemaCache, tmp_path: Path
-) -> None:
-    client = FakeClient(errors={
-        ("GET", "/attachments/999.json"): RedmineAPIError(
-            status_code=404, body={"errors": ["Not found"]}
-        ),
-    })
+async def test_download_propagates_404_metadata(cache: SchemaCache, tmp_path: Path) -> None:
+    client = FakeClient(
+        errors={
+            ("GET", "/attachments/999.json"): RedmineAPIError(
+                status_code=404, body={"errors": ["Not found"]}
+            ),
+        }
+    )
     result = await attachments.download_attachment(
-        client, cache, 999, str(tmp_path / "x.bin"),
+        client,
+        cache,
+        999,
+        str(tmp_path / "x.bin"),
         allowed_directories=(tmp_path,),
     )
     assert result["error"] == "redmine_api_404"
 
 
-async def test_download_handles_malformed_metadata(
-    cache: SchemaCache, tmp_path: Path
-) -> None:
-    client = FakeClient({
-        ("GET", "/attachments/8.json"): {"unexpected": "shape"},
-    })
+async def test_download_handles_malformed_metadata(cache: SchemaCache, tmp_path: Path) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/attachments/8.json"): {"unexpected": "shape"},
+        }
+    )
     result = await attachments.download_attachment(
-        client, cache, 8, str(tmp_path / "x.bin"),
+        client,
+        cache,
+        8,
+        str(tmp_path / "x.bin"),
         allowed_directories=(tmp_path,),
     )
     assert result["error"] == "attachment_metadata_malformed"

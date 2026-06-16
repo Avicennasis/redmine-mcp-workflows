@@ -51,40 +51,48 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 
 async def test_list_groups(cache):
-    client = FakeClient({
-        ("GET", "/groups.json"): {
-            "groups": [{"id": 1, "name": "Admins"}],
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/groups.json"): {
+                "groups": [{"id": 1, "name": "Admins"}],
+            },
+        }
+    )
     result = await groups.list_groups(client, cache)
     assert result["count"] == 1
     assert result["groups"][0]["name"] == "Admins"
 
 
 async def test_get_group(cache):
-    client = FakeClient({
-        ("GET", "/groups/1.json"): {
-            "group": {"id": 1, "name": "Admins"},
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/groups/1.json"): {
+                "group": {"id": 1, "name": "Admins"},
+            },
+        }
+    )
     result = await groups.get_group(client, cache, group_id=1)
     assert result["group"]["name"] == "Admins"
 
 
 async def test_get_group_404(cache):
-    client = FakeClient(errors={
-        ("GET", "/groups/999.json"): RedmineAPIError(status_code=404, body=""),
-    })
+    client = FakeClient(
+        errors={
+            ("GET", "/groups/999.json"): RedmineAPIError(status_code=404, body=""),
+        }
+    )
     result = await groups.get_group(client, cache, group_id=999)
     assert result["error"] == "group_not_found"
 
 
 async def test_create_group(cache):
-    client = FakeClient({
-        ("POST", "/groups.json"): {
-            "group": {"id": 2, "name": "Developers"},
-        },
-    })
+    client = FakeClient(
+        {
+            ("POST", "/groups.json"): {
+                "group": {"id": 2, "name": "Developers"},
+            },
+        }
+    )
     result = await groups.create_group(client, cache, name="Developers")
     assert result["group"]["id"] == 2
 

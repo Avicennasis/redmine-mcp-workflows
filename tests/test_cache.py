@@ -152,9 +152,7 @@ def test_workflow_observation_first_record(cache: SchemaCache) -> None:
     cache.record_workflow_observation(
         tracker_id=1, role_id=4, from_status_id=1, to_status_id=2, outcome="allowed"
     )
-    obs = cache.get_workflow_observation(
-        tracker_id=1, role_id=4, from_status_id=1, to_status_id=2
-    )
+    obs = cache.get_workflow_observation(tracker_id=1, role_id=4, from_status_id=1, to_status_id=2)
     assert obs is not None
     assert obs["outcome"] == "allowed"
     assert obs["observation_count"] == 1
@@ -165,9 +163,7 @@ def test_workflow_observation_repeats_increment_count(cache: SchemaCache) -> Non
         cache.record_workflow_observation(
             tracker_id=1, role_id=4, from_status_id=1, to_status_id=2, outcome="allowed"
         )
-    obs = cache.get_workflow_observation(
-        tracker_id=1, role_id=4, from_status_id=1, to_status_id=2
-    )
+    obs = cache.get_workflow_observation(tracker_id=1, role_id=4, from_status_id=1, to_status_id=2)
     assert obs["observation_count"] == 3
 
 
@@ -179,12 +175,14 @@ def test_workflow_observation_outcome_flip_resets_count(cache: SchemaCache) -> N
         tracker_id=1, role_id=4, from_status_id=1, to_status_id=2, outcome="allowed"
     )
     cache.record_workflow_observation(
-        tracker_id=1, role_id=4, from_status_id=1, to_status_id=2,
-        outcome="disallowed", error_text="rule changed",
+        tracker_id=1,
+        role_id=4,
+        from_status_id=1,
+        to_status_id=2,
+        outcome="disallowed",
+        error_text="rule changed",
     )
-    obs = cache.get_workflow_observation(
-        tracker_id=1, role_id=4, from_status_id=1, to_status_id=2
-    )
+    obs = cache.get_workflow_observation(tracker_id=1, role_id=4, from_status_id=1, to_status_id=2)
     assert obs["outcome"] == "disallowed"
     assert obs["observation_count"] == 1
     assert obs["last_error_text"] == "rule changed"
@@ -271,10 +269,14 @@ def test_get_custom_field_returns_none_when_missing(cache: SchemaCache) -> None:
 
 def test_get_custom_field_by_name(cache: SchemaCache) -> None:
     cache.put_custom_field(
-        field_id=1, name="Difficulty", format_kind="list",
-        is_required=True, default_value="Unclassified",
+        field_id=1,
+        name="Difficulty",
+        format_kind="list",
+        is_required=True,
+        default_value="Unclassified",
         possible_values=["Unclassified", "Easy"],
-        applicable_tracker_ids=[], for_all_projects=True,
+        applicable_tracker_ids=[],
+        for_all_projects=True,
     )
     found = cache.get_custom_field_by_name("Difficulty")
     assert found is not None
@@ -284,14 +286,24 @@ def test_get_custom_field_by_name(cache: SchemaCache) -> None:
 
 def test_custom_field_upsert(cache: SchemaCache) -> None:
     cache.put_custom_field(
-        field_id=7, name="Component", format_kind="string",
-        is_required=False, default_value=None, possible_values=[],
-        applicable_tracker_ids=[1], for_all_projects=False,
+        field_id=7,
+        name="Component",
+        format_kind="string",
+        is_required=False,
+        default_value=None,
+        possible_values=[],
+        applicable_tracker_ids=[1],
+        for_all_projects=False,
     )
     cache.put_custom_field(
-        field_id=7, name="Component", format_kind="string",
-        is_required=True, default_value="core", possible_values=["core", "ui"],
-        applicable_tracker_ids=[1, 2], for_all_projects=True,
+        field_id=7,
+        name="Component",
+        format_kind="string",
+        is_required=True,
+        default_value="core",
+        possible_values=["core", "ui"],
+        applicable_tracker_ids=[1, 2],
+        for_all_projects=True,
     )
     field = cache.get_custom_field(7)
     assert field["is_required"] is True
@@ -303,15 +315,24 @@ def test_custom_field_upsert(cache: SchemaCache) -> None:
 
 def test_list_custom_fields_filters_by_tracker(cache: SchemaCache) -> None:
     cache.put_custom_field(
-        field_id=42, name="Difficulty", format_kind="list",
-        is_required=True, default_value="Unclassified",
+        field_id=42,
+        name="Difficulty",
+        format_kind="list",
+        is_required=True,
+        default_value="Unclassified",
         possible_values=["Unclassified", "Easy", "Normal", "Hard"],
-        applicable_tracker_ids=[1, 2], for_all_projects=True,
+        applicable_tracker_ids=[1, 2],
+        for_all_projects=True,
     )
     cache.put_custom_field(
-        field_id=99, name="Customer", format_kind="string",
-        is_required=False, default_value=None, possible_values=[],
-        applicable_tracker_ids=[3], for_all_projects=False,
+        field_id=99,
+        name="Customer",
+        format_kind="string",
+        is_required=False,
+        default_value=None,
+        possible_values=[],
+        applicable_tracker_ids=[3],
+        for_all_projects=False,
     )
 
     fields_for_t1 = cache.list_custom_fields(tracker_id=1)
@@ -327,25 +348,32 @@ def test_list_custom_fields_filters_by_tracker(cache: SchemaCache) -> None:
 def test_list_custom_fields_empty_applicable_means_all_trackers(cache: SchemaCache) -> None:
     """An empty applicable_tracker_ids list means 'applies to every tracker'."""
     cache.put_custom_field(
-        field_id=1, name="Difficulty", format_kind="list",
-        is_required=True, default_value="Unclassified",
+        field_id=1,
+        name="Difficulty",
+        format_kind="list",
+        is_required=True,
+        default_value="Unclassified",
         possible_values=["Unclassified"],
-        applicable_tracker_ids=[], for_all_projects=True,
+        applicable_tracker_ids=[],
+        for_all_projects=True,
     )
     for tracker_id in (1, 2, 99):
         assert any(
-            f["name"] == "Difficulty"
-            for f in cache.list_custom_fields(tracker_id=tracker_id)
+            f["name"] == "Difficulty" for f in cache.list_custom_fields(tracker_id=tracker_id)
         )
 
 
 def test_reconcile_auth_wipes_custom_fields_on_key_change(cache: SchemaCache) -> None:
     cache.reconcile_auth("api-key-v1")
     cache.put_custom_field(
-        field_id=1, name="Difficulty", format_kind="list",
-        is_required=True, default_value="Unclassified",
+        field_id=1,
+        name="Difficulty",
+        format_kind="list",
+        is_required=True,
+        default_value="Unclassified",
         possible_values=["Unclassified"],
-        applicable_tracker_ids=[], for_all_projects=True,
+        applicable_tracker_ids=[],
+        for_all_projects=True,
     )
     cache.reconcile_auth("api-key-v2")
     assert cache.get_custom_field(1) is None
@@ -353,10 +381,14 @@ def test_reconcile_auth_wipes_custom_fields_on_key_change(cache: SchemaCache) ->
 
 def test_invalidate_all_clears_custom_fields(cache: SchemaCache) -> None:
     cache.put_custom_field(
-        field_id=1, name="Difficulty", format_kind="list",
-        is_required=True, default_value="Unclassified",
+        field_id=1,
+        name="Difficulty",
+        format_kind="list",
+        is_required=True,
+        default_value="Unclassified",
         possible_values=["Unclassified"],
-        applicable_tracker_ids=[], for_all_projects=True,
+        applicable_tracker_ids=[],
+        for_all_projects=True,
     )
     cache.invalidate("all")
     assert cache.get_custom_field(1) is None

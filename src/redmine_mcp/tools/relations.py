@@ -124,7 +124,8 @@ async def add_relation(
 
     try:
         resp = await client.post(
-            f"/issues/{issue_id}/relations.json", json={"relation": relation},
+            f"/issues/{issue_id}/relations.json",
+            json={"relation": relation},
         )
     except RedmineAPIError as e:
         return e.as_structured()

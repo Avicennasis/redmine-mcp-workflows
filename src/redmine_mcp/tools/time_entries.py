@@ -88,12 +88,14 @@ async def create_time_entry(
     if issue_id is None and project_id is None:
         return {
             "error": "validation_failed",
-            "errors": [{
-                "error": "required_field_missing",
-                "hint": "One of issue_id or project_id is required for create_time_entry.",
-                "field": "issue_id_or_project_id",
-                "op": "create_time_entry",
-            }],
+            "errors": [
+                {
+                    "error": "required_field_missing",
+                    "hint": "One of issue_id or project_id is required for create_time_entry.",
+                    "field": "issue_id_or_project_id",
+                    "op": "create_time_entry",
+                }
+            ],
         }
 
     parsed_hours, hour_errs = field_validators.validate_hours(hours)
@@ -169,11 +171,7 @@ async def list_time_entries(
 
     payload = await client.get("/time_entries.json", params=params)
     entries = payload.get("time_entries", []) if isinstance(payload, dict) else []
-    total = (
-        payload.get("total_count", len(entries))
-        if isinstance(payload, dict)
-        else len(entries)
-    )
+    total = payload.get("total_count", len(entries)) if isinstance(payload, dict) else len(entries)
     return {
         "time_entries": entries,
         "total_count": total,

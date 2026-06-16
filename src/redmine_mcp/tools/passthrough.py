@@ -83,10 +83,7 @@ async def request(
             path=path,
             extra={
                 "error": "passthrough_method_unknown",
-                "hint": (
-                    f"Method {method!r} is not in the allowed set "
-                    f"{list(ALLOWED_METHODS)}."
-                ),
+                "hint": (f"Method {method!r} is not in the allowed set {list(ALLOWED_METHODS)}."),
                 "allowed_methods": list(ALLOWED_METHODS),
             },
         )

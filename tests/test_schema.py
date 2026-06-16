@@ -45,12 +45,16 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 @pytest.mark.asyncio
 async def test_fetch_all_trackers_caches(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/trackers.json"): {"trackers": [
-            {"id": 1, "name": "Bug"},
-            {"id": 2, "name": "Feature"},
-        ]},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/trackers.json"): {
+                "trackers": [
+                    {"id": 1, "name": "Bug"},
+                    {"id": 2, "name": "Feature"},
+                ]
+            },
+        }
+    )
     result = await tracker_schema.fetch_all_trackers(client, cache)
     assert len(result) == 2
     assert cache.get_tracker(1) is not None
@@ -62,21 +66,30 @@ async def test_fetch_all_trackers_caches(cache: SchemaCache) -> None:
 
 @pytest.mark.asyncio
 async def test_describe_tracker_lazy_populates_and_enriches(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/trackers.json"): {"trackers": [{"id": 1, "name": "Bug",
-                                                  "default_status": {"id": 1, "name": "New"}}]},
-        ("GET", "/issue_statuses.json"): {"issue_statuses": [
-            {"id": 1, "name": "New"},
-            {"id": 2, "name": "In Progress"},
-        ]},
-        ("GET", "/enumerations/issue_priorities.json"): {"issue_priorities": [
-            {"id": 2, "name": "Normal"},
-        ]},
-        ("GET", "/roles.json"): {"roles": [{"id": 4, "name": "Developer"}]},
-        ("GET", "/enumerations/time_entry_activities.json"): {"time_entry_activities": [
-            {"id": 9, "name": "Development"},
-        ]},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/trackers.json"): {
+                "trackers": [{"id": 1, "name": "Bug", "default_status": {"id": 1, "name": "New"}}]
+            },
+            ("GET", "/issue_statuses.json"): {
+                "issue_statuses": [
+                    {"id": 1, "name": "New"},
+                    {"id": 2, "name": "In Progress"},
+                ]
+            },
+            ("GET", "/enumerations/issue_priorities.json"): {
+                "issue_priorities": [
+                    {"id": 2, "name": "Normal"},
+                ]
+            },
+            ("GET", "/roles.json"): {"roles": [{"id": 4, "name": "Developer"}]},
+            ("GET", "/enumerations/time_entry_activities.json"): {
+                "time_entry_activities": [
+                    {"id": 9, "name": "Development"},
+                ]
+            },
+        }
+    )
 
     result = await tracker_schema.describe_tracker(client, cache, "Bug")
 
@@ -121,22 +134,27 @@ async def test_describe_tracker_includes_custom_fields(cache: SchemaCache) -> No
     cache.put_meta_json("issue_statuses", [{"id": 1, "name": "New"}])
     cache.put_meta_json("issue_priorities", [])
     cache.put_meta_json("roles", [])
-    client = FakeClient({
-        ("GET", "/custom_fields.json"): {"custom_fields": [
-            {
-                "id": 1, "name": "Difficulty",
-                "customized_type": "issue",
-                "field_format": "list",
-                "is_required": True,
-                "default_value": "Unclassified",
-                "possible_values": [
-                    {"value": "Unclassified", "label": "Unclassified"},
-                    {"value": "Easy", "label": "Easy"},
-                ],
-                "trackers": [{"id": 1, "name": "Bug"}, {"id": 2, "name": "Feature"}],
+    client = FakeClient(
+        {
+            ("GET", "/custom_fields.json"): {
+                "custom_fields": [
+                    {
+                        "id": 1,
+                        "name": "Difficulty",
+                        "customized_type": "issue",
+                        "field_format": "list",
+                        "is_required": True,
+                        "default_value": "Unclassified",
+                        "possible_values": [
+                            {"value": "Unclassified", "label": "Unclassified"},
+                            {"value": "Easy", "label": "Easy"},
+                        ],
+                        "trackers": [{"id": 1, "name": "Bug"}, {"id": 2, "name": "Feature"}],
+                    },
+                ]
             },
-        ]},
-    })
+        }
+    )
 
     result = await tracker_schema.describe_tracker(client, cache, "Bug")
 
@@ -158,8 +176,11 @@ async def test_describe_tracker_filters_custom_fields_by_tracker(cache: SchemaCa
     cache.put_meta_json("roles", [])
     # Pre-seed cache so describe_tracker does NOT call /custom_fields.json
     cache.put_custom_field(
-        field_id=1, name="Difficulty", format_kind="list",
-        is_required=True, default_value="Unclassified",
+        field_id=1,
+        name="Difficulty",
+        format_kind="list",
+        is_required=True,
+        default_value="Unclassified",
         possible_values=["Unclassified", "Easy"],
         applicable_tracker_ids=[1],  # Only Bug, not Feature
         for_all_projects=True,
@@ -195,9 +216,11 @@ async def test_describe_tracker_swallows_custom_fields_fetch_errors(cache: Schem
 
 @pytest.mark.asyncio
 async def test_describe_tracker_returns_error_for_unknown(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/trackers.json"): {"trackers": [{"id": 1, "name": "Bug"}]},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/trackers.json"): {"trackers": [{"id": 1, "name": "Bug"}]},
+        }
+    )
     result = await tracker_schema.describe_tracker(client, cache, "Nonexistent")
     assert result.get("error") == "tracker_not_found"
     assert "Bug" in result["available"]
@@ -208,12 +231,18 @@ async def test_describe_tracker_returns_error_for_unknown(cache: SchemaCache) ->
 
 @pytest.mark.asyncio
 async def test_describe_project_caches_on_first_call(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/projects/claudecode.json"): {"project": {
-            "id": 15, "identifier": "claudecode", "name": "ClaudeCode",
-            "trackers": [{"id": 1, "name": "Bug"}],
-        }},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects/claudecode.json"): {
+                "project": {
+                    "id": 15,
+                    "identifier": "claudecode",
+                    "name": "ClaudeCode",
+                    "trackers": [{"id": 1, "name": "Bug"}],
+                }
+            },
+        }
+    )
     first = await project_schema.describe_project(client, cache, "claudecode")
     assert first["source"] == "api"
 
@@ -225,9 +254,11 @@ async def test_describe_project_caches_on_first_call(cache: SchemaCache) -> None
 
 @pytest.mark.asyncio
 async def test_describe_project_handles_404_shaped_payload(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/projects/nope.json"): {"project": None},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects/nope.json"): {"project": None},
+        }
+    )
     result = await project_schema.describe_project(client, cache, "nope")
     assert result.get("error") == "project_not_found"
 
@@ -237,17 +268,19 @@ async def test_describe_project_handles_404_shaped_payload(cache: SchemaCache) -
 
 @pytest.mark.asyncio
 async def test_list_projects_paginates_and_returns_total() -> None:
-    client = FakeClient({
-        ("GET", "/projects.json"): {
-            "projects": [
-                {"id": 1, "identifier": "alpha", "name": "Alpha"},
-                {"id": 2, "identifier": "beta", "name": "Beta"},
-            ],
-            "total_count": 59,
-            "limit": 25,
-            "offset": 0,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects.json"): {
+                "projects": [
+                    {"id": 1, "identifier": "alpha", "name": "Alpha"},
+                    {"id": 2, "identifier": "beta", "name": "Beta"},
+                ],
+                "total_count": 59,
+                "limit": 25,
+                "offset": 0,
+            },
+        }
+    )
     result = await project_schema.list_projects(client, limit=25, offset=0)
     assert result["total_count"] == 59
     assert len(result["projects"]) == 2
@@ -256,16 +289,18 @@ async def test_list_projects_paginates_and_returns_total() -> None:
 
 @pytest.mark.asyncio
 async def test_list_projects_query_filters_client_side() -> None:
-    client = FakeClient({
-        ("GET", "/projects.json"): {
-            "projects": [
-                {"id": 1, "identifier": "alpha", "name": "Alpha"},
-                {"id": 2, "identifier": "beta", "name": "Beta"},
-                {"id": 3, "identifier": "claudecode", "name": "ClaudeCode"},
-            ],
-            "total_count": 3,
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects.json"): {
+                "projects": [
+                    {"id": 1, "identifier": "alpha", "name": "Alpha"},
+                    {"id": 2, "identifier": "beta", "name": "Beta"},
+                    {"id": 3, "identifier": "claudecode", "name": "ClaudeCode"},
+                ],
+                "total_count": 3,
+            },
+        }
+    )
     result = await project_schema.list_projects(client, query="claud")
     assert result["filtered_locally"] is True
     assert len(result["projects"]) == 1
@@ -315,16 +350,18 @@ async def test_list_projects_query_walks_all_pages() -> None:
 @pytest.mark.asyncio
 async def test_list_projects_query_total_reflects_filtered_count() -> None:
     """total_count when filtered = matches across all pages, not server total."""
-    client = FakeClient({
-        ("GET", "/projects.json"): {
-            "projects": [
-                {"id": 1, "identifier": "alpha-mcp", "name": "Alpha-MCP"},
-                {"id": 2, "identifier": "beta", "name": "Beta"},
-                {"id": 3, "identifier": "gamma-mcp", "name": "Gamma-MCP"},
-            ],
-            "total_count": 50,  # server reports many more total
-        },
-    })
+    client = FakeClient(
+        {
+            ("GET", "/projects.json"): {
+                "projects": [
+                    {"id": 1, "identifier": "alpha-mcp", "name": "Alpha-MCP"},
+                    {"id": 2, "identifier": "beta", "name": "Beta"},
+                    {"id": 3, "identifier": "gamma-mcp", "name": "Gamma-MCP"},
+                ],
+                "total_count": 50,  # server reports many more total
+            },
+        }
+    )
     result = await project_schema.list_projects(client, query="mcp")
     assert result["filtered_locally"] is True
     # Filtered total = 2 (alpha-mcp + gamma-mcp), not 50.
@@ -361,9 +398,7 @@ def test_record_outcome_uses_role_zero_when_no_roles(cache: SchemaCache) -> None
         to_status_id=2,
         outcome="allowed",
     )
-    obs = cache.get_workflow_observation(
-        tracker_id=1, role_id=0, from_status_id=1, to_status_id=2
-    )
+    obs = cache.get_workflow_observation(tracker_id=1, role_id=0, from_status_id=1, to_status_id=2)
     assert obs is not None
     assert obs["outcome"] == "allowed"
 

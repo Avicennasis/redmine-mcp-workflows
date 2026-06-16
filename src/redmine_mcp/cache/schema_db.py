@@ -286,8 +286,13 @@ class SchemaCache:
                     VALUES (?, ?, ?, ?, ?, ?, 1, ?)
                     """,
                     (
-                        tracker_id, role_id, from_status_id, to_status_id,
-                        outcome, now, error_text,
+                        tracker_id,
+                        role_id,
+                        from_status_id,
+                        to_status_id,
+                        outcome,
+                        now,
+                        error_text,
                     ),
                 )
             elif existing["outcome"] == outcome:
@@ -301,8 +306,12 @@ class SchemaCache:
                       AND from_status_id = ? AND to_status_id = ?
                     """,
                     (
-                        now, error_text,
-                        tracker_id, role_id, from_status_id, to_status_id,
+                        now,
+                        error_text,
+                        tracker_id,
+                        role_id,
+                        from_status_id,
+                        to_status_id,
                     ),
                 )
             else:
@@ -318,8 +327,13 @@ class SchemaCache:
                       AND from_status_id = ? AND to_status_id = ?
                     """,
                     (
-                        outcome, now, error_text,
-                        tracker_id, role_id, from_status_id, to_status_id,
+                        outcome,
+                        now,
+                        error_text,
+                        tracker_id,
+                        role_id,
+                        from_status_id,
+                        to_status_id,
                     ),
                 )
             self._conn.commit()
@@ -403,10 +417,15 @@ class SchemaCache:
                     updated_at=excluded.updated_at
                 """,
                 (
-                    field_id, name, format_kind, 1 if is_required else 0,
-                    default_value, json.dumps(possible_values),
+                    field_id,
+                    name,
+                    format_kind,
+                    1 if is_required else 0,
+                    default_value,
+                    json.dumps(possible_values),
                     json.dumps(applicable_tracker_ids),
-                    1 if for_all_projects else 0, int(time.time()),
+                    1 if for_all_projects else 0,
+                    int(time.time()),
                 ),
             )
             self._conn.commit()

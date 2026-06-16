@@ -14,11 +14,13 @@ from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import RedmineAPIError
 
-ALLOWED_TYPES = frozenset({
-    "issue_priorities",
-    "time_entry_activities",
-    "document_categories",
-})
+ALLOWED_TYPES = frozenset(
+    {
+        "issue_priorities",
+        "time_entry_activities",
+        "document_categories",
+    }
+)
 
 
 async def list_enumerations(

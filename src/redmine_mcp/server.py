@@ -136,16 +136,21 @@ def _normalize_custom_fields(
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as e:
-        return (None, {
-            "error": "custom_fields_invalid_json",
-            "hint": f"custom_fields must be a list or a JSON-encoded list: {e}",
-        })
+        return (
+            None,
+            {
+                "error": "custom_fields_invalid_json",
+                "hint": f"custom_fields must be a list or a JSON-encoded list: {e}",
+            },
+        )
     if not isinstance(parsed, list):
-        return (None, {
-            "error": "custom_fields_invalid_shape",
-            "hint": "custom_fields must decode to a JSON array, not "
-                    f"{type(parsed).__name__}.",
-        })
+        return (
+            None,
+            {
+                "error": "custom_fields_invalid_shape",
+                "hint": f"custom_fields must decode to a JSON array, not {type(parsed).__name__}.",
+            },
+        )
     return (parsed or None, None)
 
 
@@ -209,6 +214,7 @@ async def redmine_describe_tracker(
         return await discovery.describe_tracker(
             client, cache, ident, include_observations=include_observations
         )
+
     return await _wrap(factory)
 
 
@@ -227,6 +233,7 @@ async def redmine_describe_project(project: str) -> str:
 
     async def factory(client, cache):
         return await discovery.describe_project(client, cache, ident)
+
     return await _wrap(factory)
 
 
@@ -251,6 +258,7 @@ async def redmine_list_projects(
 
     async def factory(client, cache):
         return await discovery.list_projects(client, query=q, limit=limit, offset=offset)
+
     return await _wrap(factory)
 
 
@@ -286,16 +294,27 @@ async def redmine_create_project(
     hp = homepage if homepage else None
     pid = parent_id if parent_id else None
     tids = tracker_ids if isinstance(tracker_ids, list) and tracker_ids else None
-    emn = enabled_module_names if isinstance(enabled_module_names, list) and enabled_module_names else None
+    emn = (
+        enabled_module_names
+        if isinstance(enabled_module_names, list) and enabled_module_names
+        else None
+    )
 
     async def factory(client, cache):
         return await projects.create_project(
-            client, cache,
-            name=name, identifier=identifier,
-            description=desc, homepage=hp, is_public=is_public,
-            parent_id=pid, inherit_members=inherit_members,
-            tracker_ids=tids, enabled_module_names=emn,
+            client,
+            cache,
+            name=name,
+            identifier=identifier,
+            description=desc,
+            homepage=hp,
+            is_public=is_public,
+            parent_id=pid,
+            inherit_members=inherit_members,
+            tracker_ids=tids,
+            enabled_module_names=emn,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -334,16 +353,27 @@ async def redmine_update_project(
     hp = homepage if homepage else None
     ppid = parent_id if parent_id else None
     tids = tracker_ids if isinstance(tracker_ids, list) and tracker_ids else None
-    emn = enabled_module_names if isinstance(enabled_module_names, list) and enabled_module_names else None
+    emn = (
+        enabled_module_names
+        if isinstance(enabled_module_names, list) and enabled_module_names
+        else None
+    )
 
     async def factory(client, cache):
         return await projects.update_project(
-            client, cache,
-            project_id=pid, name=n, description=desc, homepage=hp,
-            is_public=is_public, parent_id=ppid,
+            client,
+            cache,
+            project_id=pid,
+            name=n,
+            description=desc,
+            homepage=hp,
+            is_public=is_public,
+            parent_id=ppid,
             inherit_members=inherit_members,
-            tracker_ids=tids, enabled_module_names=emn,
+            tracker_ids=tids,
+            enabled_module_names=emn,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -362,6 +392,7 @@ async def redmine_delete_project(project_id: str) -> str:
 
     async def factory(client, cache):
         return await projects.delete_project(client, cache, project_id=pid)
+
     return await _wrap(factory, write=True)
 
 
@@ -380,6 +411,7 @@ async def redmine_archive_project(project_id: str) -> str:
 
     async def factory(client, cache):
         return await projects.archive_project(client, cache, project_id=pid)
+
     return await _wrap(factory, write=True)
 
 
@@ -398,6 +430,7 @@ async def redmine_unarchive_project(project_id: str) -> str:
 
     async def factory(client, cache):
         return await projects.unarchive_project(client, cache, project_id=pid)
+
     return await _wrap(factory, write=True)
 
 
@@ -438,6 +471,7 @@ async def redmine_get_issue(issue_id: int, include: str = "") -> str:
 
     async def factory(client, cache):
         return await issues.get_issue(client, cache, issue_id, include=inc)
+
     return await _wrap(factory)
 
 
@@ -512,14 +546,24 @@ async def redmine_create_issue(
 
     async def factory(client, cache):
         return await issues.create_issue(
-            client, cache,
-            project=project, tracker=tracker, subject=subject,
-            description=desc, priority=pri, status=st,
-            assigned_to_id=assignee, difficulty=diff,
-            held=h, held_until=hu,
-            due_date=dd, start_date=sd, done_ratio=dr,
+            client,
+            cache,
+            project=project,
+            tracker=tracker,
+            subject=subject,
+            description=desc,
+            priority=pri,
+            status=st,
+            assigned_to_id=assignee,
+            difficulty=diff,
+            held=h,
+            held_until=hu,
+            due_date=dd,
+            start_date=sd,
+            done_ratio=dr,
             custom_fields=cf,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -604,13 +648,25 @@ async def redmine_update_issue(
 
     async def factory(client, cache):
         return await issues.update_issue(
-            client, cache, issue_id,
-            subject=sub, description=desc, status=st, priority=pri,
-            assigned_to_id=assignee, notes=nt, difficulty=diff,
-            held=h, held_until=hu,
-            due_date=dd, start_date=sd, done_ratio=dr,
-            fixed_version_id=fv, custom_fields=cf,
+            client,
+            cache,
+            issue_id,
+            subject=sub,
+            description=desc,
+            status=st,
+            priority=pri,
+            assigned_to_id=assignee,
+            notes=nt,
+            difficulty=diff,
+            held=h,
+            held_until=hu,
+            due_date=dd,
+            start_date=sd,
+            done_ratio=dr,
+            fixed_version_id=fv,
+            custom_fields=cf,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -633,6 +689,7 @@ async def redmine_close_issue(issue_id: int, note: str = "") -> str:
 
     async def factory(client, cache):
         return await issues.close_issue(client, cache, issue_id, note=n)
+
     return await _wrap(factory, write=True)
 
 
@@ -652,14 +709,17 @@ async def redmine_delete_issue(
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
     if not confirm_destructive:
-        return _dump({
-            "error": "confirmation_required",
-            "hint": "Pass confirm_destructive=True to permanently delete "
-                    f"issue #{issue_id}. This cannot be undone.",
-        })
+        return _dump(
+            {
+                "error": "confirmation_required",
+                "hint": "Pass confirm_destructive=True to permanently delete "
+                f"issue #{issue_id}. This cannot be undone.",
+            }
+        )
 
     async def factory(client, _cache):
         return await issues.delete_issue(client, issue_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -698,10 +758,16 @@ async def redmine_search_issues(
 
     async def factory(client, cache):
         return await issues.search_issues(
-            client, cache,
-            query=q, project=proj, status=st, query_id=qid,
-            limit=limit, offset=offset,
+            client,
+            cache,
+            query=q,
+            project=proj,
+            status=st,
+            query_id=qid,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -727,10 +793,10 @@ async def redmine_add_comment(
     Honors ``REDMINE_MCP_READ_ONLY``. Direct PUT — no pre-fetch, no
     workflow check (comments don't change status).
     """
+
     async def factory(client, cache):
-        return await comments.add_comment(
-            client, cache, issue_id, note, private=private
-        )
+        return await comments.add_comment(client, cache, issue_id, note, private=private)
+
     return await _wrap(factory, write=True)
 
 
@@ -745,8 +811,10 @@ async def redmine_get_journals(issue_id: int) -> str:
     (the comment body if any), and ``details`` (a list of field-change
     records). Read-only.
     """
+
     async def factory(client, cache):
         return await comments.get_journals(client, cache, issue_id)
+
     return await _wrap(factory)
 
 
@@ -771,10 +839,10 @@ async def redmine_update_journal(
     Honors ``REDMINE_MCP_READ_ONLY``. The API user can only edit their
     own notes unless they have the ``edit_issue_notes`` permission.
     """
+
     async def factory(client, cache):
-        return await comments.update_journal(
-            client, cache, journal_id, notes
-        )
+        return await comments.update_journal(client, cache, journal_id, notes)
+
     return await _wrap(factory, write=True)
 
 
@@ -804,11 +872,14 @@ async def redmine_upload_attachment(
 
     async def factory(client, cache):
         return await attachments.upload_attachment(
-            client, cache, file_path,
+            client,
+            cache,
+            file_path,
             allowed_directories=allowed,
             issue_id=iid,
             description=desc,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -834,14 +905,18 @@ async def redmine_download_attachment(
     ``attachment_size_mismatch`` rather than silently saving a partial
     file. Read-only-safe (no Redmine writes).
     """
+
     async def factory(client, cache):
         cfg = _get_config()
         return await attachments.download_attachment(
-            client, cache,
-            attachment_id, save_to,
+            client,
+            cache,
+            attachment_id,
+            save_to,
             allowed_directories=cfg.allowed_directories,
             overwrite=overwrite,
         )
+
     return await _wrap(factory)
 
 
@@ -881,10 +956,17 @@ async def redmine_create_time_entry(
 
     async def factory(client, cache):
         return await time_entries.create_time_entry(
-            client, cache,
-            hours=hours, issue_id=iid, project_id=pid,
-            activity=act, spent_on=son, comments=cmt, user_id=uid,
+            client,
+            cache,
+            hours=hours,
+            issue_id=iid,
+            project_id=pid,
+            activity=act,
+            spent_on=son,
+            comments=cmt,
+            user_id=uid,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -917,11 +999,18 @@ async def redmine_list_time_entries(
 
     async def factory(client, cache):
         return await time_entries.list_time_entries(
-            client, cache,
-            issue_id=iid, project_id=pid, user_id=uid,
-            spent_on=son, from_date=fd, to_date=td,
-            limit=limit, offset=offset,
+            client,
+            cache,
+            issue_id=iid,
+            project_id=pid,
+            user_id=uid,
+            spent_on=son,
+            from_date=fd,
+            to_date=td,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -948,10 +1037,17 @@ async def redmine_update_time_entry(
 
     async def factory(client, cache):
         return await time_entries.update_time_entry(
-            client, cache, time_entry_id,
-            hours=h, activity=act, spent_on=son, comments=cmt,
-            issue_id=iid, project_id=pid,
+            client,
+            cache,
+            time_entry_id,
+            hours=h,
+            activity=act,
+            spent_on=son,
+            comments=cmt,
+            issue_id=iid,
+            project_id=pid,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -961,8 +1057,10 @@ async def redmine_delete_time_entry(time_entry_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await time_entries.delete_time_entry(client, cache, time_entry_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -976,8 +1074,10 @@ async def redmine_add_watcher(issue_id: int, user_id: int) -> str:
 
     Idempotent on the Redmine side. Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await watchers.add_watcher(client, cache, issue_id, user_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -993,8 +1093,10 @@ async def redmine_remove_watcher(issue_id: int, user_id: int) -> str:
     not found — distinguishable by status code on the underlying error
     payload). Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await watchers.remove_watcher(client, cache, issue_id, user_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -1004,8 +1106,10 @@ async def redmine_list_watchers(issue_id: int) -> str:
 
     Each watcher entry has ``id`` and ``name``. Read-only.
     """
+
     async def factory(client, cache):
         return await watchers.list_watchers(client, cache, issue_id)
+
     return await _wrap(factory)
 
 
@@ -1033,6 +1137,7 @@ async def redmine_get_wiki_page(
 
     async def factory(client, cache):
         return await wiki.get_page(client, cache, proj, title, version=ver)
+
     return await _wrap(factory)
 
 
@@ -1065,9 +1170,15 @@ async def redmine_create_wiki_page(
 
     async def factory(client, cache):
         return await wiki.create_page(
-            client, cache, proj, title, text,
-            parent_title=parent, comments=cmt,
+            client,
+            cache,
+            proj,
+            title,
+            text,
+            parent_title=parent,
+            comments=cmt,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1103,9 +1214,16 @@ async def redmine_update_wiki_page(
 
     async def factory(client, cache):
         return await wiki.update_page(
-            client, cache, proj, title, text,
-            version=ver, parent_title=parent, comments=cmt,
+            client,
+            cache,
+            proj,
+            title,
+            text,
+            version=ver,
+            parent_title=parent,
+            comments=cmt,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1126,6 +1244,7 @@ async def redmine_delete_wiki_page(project: str, title: str) -> str:
 
     async def factory(client, cache):
         return await wiki.delete_page(client, cache, proj, title)
+
     return await _wrap(factory, write=True)
 
 
@@ -1139,8 +1258,10 @@ async def redmine_list_relations(issue_id: int) -> str:
     Each relation has ``id``, ``issue_id``, ``issue_to_id``,
     ``relation_type``, and ``delay``. Read-only.
     """
+
     async def factory(client, cache):
         return await relations.list_relations(client, cache, issue_id)
+
     return await _wrap(factory)
 
 
@@ -1171,12 +1292,14 @@ async def redmine_add_relation(
 
     async def factory(client, cache):
         return await relations.add_relation(
-            client, cache,
+            client,
+            cache,
             issue_id=issue_id,
             target_issue_id=target_issue_id,
             relation_type=relation_type,
             delay=d,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1189,10 +1312,14 @@ async def redmine_remove_relation(relation_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await relations.remove_relation(
-            client, cache, relation_id=relation_id,
+            client,
+            cache,
+            relation_id=relation_id,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1208,11 +1335,15 @@ async def redmine_set_parent_issue(issue_id: int, parent_issue_id: int) -> str:
     Parent/child is mechanically a field on the issue (``parent_issue_id``),
     not a relation record. Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await relations.set_parent_issue(
-            client, cache,
-            issue_id=issue_id, parent_issue_id=parent_issue_id,
+            client,
+            cache,
+            issue_id=issue_id,
+            parent_issue_id=parent_issue_id,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1245,14 +1376,17 @@ async def redmine_bulk_create_issues(
     "summary": {total, created, skipped, failed}}``.
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await bulk.bulk_create_issues(
-            client, cache,
+            client,
+            cache,
             issues=issues,
             on_duplicate=on_duplicate,
             pacing_seconds=pacing_seconds,
             stop_on_error=stop_on_error,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1290,12 +1424,18 @@ async def redmine_bulk_update_issues(
 
     async def factory(client, cache):
         return await bulk.bulk_update_issues(
-            client, cache,
+            client,
+            cache,
             issue_ids=issue_ids,
-            subject=sub, description=desc, status=st, priority=pri,
-            assigned_to_id=assignee, notes=nt,
+            subject=sub,
+            description=desc,
+            status=st,
+            priority=pri,
+            assigned_to_id=assignee,
+            notes=nt,
             stop_on_error=stop_on_error,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1320,9 +1460,13 @@ async def redmine_bulk_close(
 
     async def factory(client, cache):
         return await bulk.bulk_close(
-            client, cache,
-            issue_ids=issue_ids, note=n, stop_on_error=stop_on_error,
+            client,
+            cache,
+            issue_ids=issue_ids,
+            note=n,
+            stop_on_error=stop_on_error,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1342,6 +1486,7 @@ async def redmine_list_versions(project: str) -> str:
 
     async def factory(client, cache):
         return await versions.list_versions(client, cache, proj)
+
     return await _wrap(factory)
 
 
@@ -1352,8 +1497,10 @@ async def redmine_get_version(version_id: int) -> str:
     Returns the version (name, status, due_date, sharing, ...) or
     ``version_not_found``. Read-only.
     """
+
     async def factory(client, cache):
         return await versions.get_version(client, cache, version_id)
+
     return await _wrap(factory)
 
 
@@ -1392,11 +1539,17 @@ async def redmine_create_version(
 
     async def factory(client, cache):
         return await versions.create_version(
-            client, cache,
-            project=proj, name=name,
-            description=desc, status=st, due_date=dd,
-            sharing=sh, wiki_page_title=wpt,
+            client,
+            cache,
+            project=proj,
+            name=name,
+            description=desc,
+            status=st,
+            due_date=dd,
+            sharing=sh,
+            wiki_page_title=wpt,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1423,10 +1576,17 @@ async def redmine_update_version(
 
     async def factory(client, cache):
         return await versions.update_version(
-            client, cache, version_id=version_id,
-            name=n, description=desc, status=st, due_date=dd,
-            sharing=sh, wiki_page_title=wpt,
+            client,
+            cache,
+            version_id=version_id,
+            name=n,
+            description=desc,
+            status=st,
+            due_date=dd,
+            sharing=sh,
+            wiki_page_title=wpt,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1438,16 +1598,21 @@ async def redmine_delete_version(version_id: int) -> str:
     those first via ``redmine_assign_issue_to_version`` with ``version_id=0``.
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await versions.delete_version(
-            client, cache, version_id=version_id,
+            client,
+            cache,
+            version_id=version_id,
         )
+
     return await _wrap(factory, write=True)
 
 
 @mcp.tool()
 async def redmine_assign_issue_to_version(
-    issue_id: int, version_id: int,
+    issue_id: int,
+    version_id: int,
 ) -> str:
     """Assign (or clear) an issue's target version.
 
@@ -1458,10 +1623,15 @@ async def redmine_assign_issue_to_version(
     Thin wrapper over ``redmine_update_issue`` that sets
     ``fixed_version_id``. Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await versions.assign_issue_to_version(
-            client, cache, issue_id=issue_id, version_id=version_id,
+            client,
+            cache,
+            issue_id=issue_id,
+            version_id=version_id,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1491,8 +1661,13 @@ async def redmine_list_news(
 
     async def factory(client, cache):
         return await news.list_news(
-            client, cache, project=proj, limit=limit, offset=offset,
+            client,
+            cache,
+            project=proj,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -1515,10 +1690,16 @@ async def redmine_list_messages(
     A 404 typically means the boards module isn't enabled on the parent
     project, or the board_id doesn't exist.  Read-only.
     """
+
     async def factory(client, cache):
         return await forums.list_messages(
-            client, cache, board_id=board_id, limit=limit, offset=offset,
+            client,
+            cache,
+            board_id=board_id,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -1537,6 +1718,7 @@ async def redmine_list_boards(project_id: str) -> str:
 
     async def factory(client, cache):
         return await forums.list_boards(client, cache, project_id=pid)
+
     return await _wrap(factory)
 
 
@@ -1559,8 +1741,13 @@ async def redmine_create_message(
 
     async def factory(client, cache):
         return await forums.create_message(
-            client, cache, board_id=board_id, subject=subject, content=c,
+            client,
+            cache,
+            board_id=board_id,
+            subject=subject,
+            content=c,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1579,10 +1766,16 @@ async def redmine_reply_message(
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await forums.reply_message(
-            client, cache, board_id=board_id, topic_id=topic_id, content=content,
+            client,
+            cache,
+            board_id=board_id,
+            topic_id=topic_id,
+            content=content,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1592,8 +1785,10 @@ async def redmine_delete_message(message_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await forums.delete_message(client, cache, message_id=message_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -1622,8 +1817,14 @@ async def redmine_create_news(
 
     async def factory(client, cache):
         return await news.create_news(
-            client, cache, project=proj, title=title, summary=s, description=d,
+            client,
+            cache,
+            project=proj,
+            title=title,
+            summary=s,
+            description=d,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1644,8 +1845,14 @@ async def redmine_update_news(
 
     async def factory(client, cache):
         return await news.update_news(
-            client, cache, news_id=news_id, title=t, summary=s, description=d,
+            client,
+            cache,
+            news_id=news_id,
+            title=t,
+            summary=s,
+            description=d,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1655,8 +1862,10 @@ async def redmine_delete_news(news_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await news.delete_news(client, cache, news_id=news_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -1681,8 +1890,13 @@ async def redmine_list_memberships(
 
     async def factory(client, cache):
         return await memberships.list_memberships(
-            client, cache, project_id=pid, limit=limit, offset=offset,
+            client,
+            cache,
+            project_id=pid,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -1707,8 +1921,13 @@ async def redmine_add_membership(
 
     async def factory(client, cache):
         return await memberships.add_membership(
-            client, cache, project_id=pid, user_id=user_id, role_ids=role_ids,
+            client,
+            cache,
+            project_id=pid,
+            user_id=user_id,
+            role_ids=role_ids,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1725,10 +1944,15 @@ async def redmine_update_membership(
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await memberships.update_membership(
-            client, cache, membership_id=membership_id, role_ids=role_ids,
+            client,
+            cache,
+            membership_id=membership_id,
+            role_ids=role_ids,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1738,18 +1962,24 @@ async def redmine_remove_membership(membership_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await memberships.remove_membership(
-            client, cache, membership_id=membership_id,
+            client,
+            cache,
+            membership_id=membership_id,
         )
+
     return await _wrap(factory, write=True)
 
 
 @mcp.tool()
 async def redmine_list_groups() -> str:
     """List all groups (admin only). Read-only."""
+
     async def factory(client, cache):
         return await groups.list_groups(client, cache)
+
     return await _wrap(factory)
 
 
@@ -1770,6 +2000,7 @@ async def redmine_get_group(
 
     async def factory(client, cache):
         return await groups.get_group(client, cache, group_id=group_id, include=inc)
+
     return await _wrap(factory)
 
 
@@ -1791,6 +2022,7 @@ async def redmine_create_group(
         uids = user_ids
     elif isinstance(user_ids, str) and user_ids:
         import json as _json
+
         try:
             parsed = _json.loads(user_ids)
             uids = parsed if isinstance(parsed, list) else None
@@ -1799,6 +2031,7 @@ async def redmine_create_group(
 
     async def factory(client, cache):
         return await groups.create_group(client, cache, name=name, user_ids=uids)
+
     return await _wrap(factory, write=True)
 
 
@@ -1808,8 +2041,10 @@ async def redmine_update_group(group_id: int, name: str) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await groups.update_group(client, cache, group_id=group_id, name=name)
+
     return await _wrap(factory, write=True)
 
 
@@ -1819,8 +2054,10 @@ async def redmine_delete_group(group_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await groups.delete_group(client, cache, group_id=group_id)
+
     return await _wrap(factory, write=True)
 
 
@@ -1830,10 +2067,15 @@ async def redmine_add_group_user(group_id: int, user_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await groups.add_group_user(
-            client, cache, group_id=group_id, user_id=user_id,
+            client,
+            cache,
+            group_id=group_id,
+            user_id=user_id,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1843,10 +2085,15 @@ async def redmine_remove_group_user(group_id: int, user_id: int) -> str:
 
     Honors ``REDMINE_MCP_READ_ONLY``.
     """
+
     async def factory(client, cache):
         return await groups.remove_group_user(
-            client, cache, group_id=group_id, user_id=user_id,
+            client,
+            cache,
+            group_id=group_id,
+            user_id=user_id,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1865,8 +2112,11 @@ async def redmine_list_issue_categories(project_id: str) -> str:
 
     async def factory(client, cache):
         return await issue_categories.list_issue_categories(
-            client, cache, project_id=pid,
+            client,
+            cache,
+            project_id=pid,
         )
+
     return await _wrap(factory)
 
 
@@ -1892,8 +2142,13 @@ async def redmine_create_issue_category(
 
     async def factory(client, cache):
         return await issue_categories.create_issue_category(
-            client, cache, project_id=pid, name=name, assigned_to_id=aid,
+            client,
+            cache,
+            project_id=pid,
+            name=name,
+            assigned_to_id=aid,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1912,8 +2167,13 @@ async def redmine_update_issue_category(
 
     async def factory(client, cache):
         return await issue_categories.update_issue_category(
-            client, cache, category_id=category_id, name=n, assigned_to_id=aid,
+            client,
+            cache,
+            category_id=category_id,
+            name=n,
+            assigned_to_id=aid,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1935,8 +2195,12 @@ async def redmine_delete_issue_category(
 
     async def factory(client, cache):
         return await issue_categories.delete_issue_category(
-            client, cache, category_id=category_id, reassign_to_id=rid,
+            client,
+            cache,
+            category_id=category_id,
+            reassign_to_id=rid,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -1950,18 +2214,24 @@ async def redmine_list_enumerations(enum_type: str) -> str:
 
     Read-only reference data.
     """
+
     async def factory(client, cache):
         return await enumerations.list_enumerations(
-            client, cache, enum_type=enum_type,
+            client,
+            cache,
+            enum_type=enum_type,
         )
+
     return await _wrap(factory)
 
 
 @mcp.tool()
 async def redmine_list_roles() -> str:
     """List all roles. Read-only."""
+
     async def factory(client, cache):
         return await roles.list_roles(client, cache)
+
     return await _wrap(factory)
 
 
@@ -1971,8 +2241,10 @@ async def redmine_get_role(role_id: int) -> str:
 
     Read-only.
     """
+
     async def factory(client, cache):
         return await roles.get_role(client, cache, role_id=role_id)
+
     return await _wrap(factory)
 
 
@@ -1982,8 +2254,10 @@ async def redmine_list_issue_statuses() -> str:
 
     Read-only reference data.
     """
+
     async def factory(client, cache):
         return await issue_statuses.list_issue_statuses(client, cache)
+
     return await _wrap(factory)
 
 
@@ -1994,8 +2268,10 @@ async def redmine_list_custom_fields() -> str:
     Returns id, name, field_format, customized_type, is_required,
     is_filter, possible_values, etc. Read-only.
     """
+
     async def factory(client, cache):
         return await custom_fields.list_custom_fields(client, cache)
+
     return await _wrap(factory)
 
 
@@ -2018,6 +2294,7 @@ async def redmine_list_queries(project_id: str = "") -> str:
 
     async def factory(client, cache):
         return await queries.list_queries(client, cache, project_id=pid)
+
     return await _wrap(factory)
 
 
@@ -2036,6 +2313,7 @@ async def redmine_list_project_files(project_id: str) -> str:
 
     async def factory(client, cache):
         return await files.list_project_files(client, cache, project_id=pid)
+
     return await _wrap(factory)
 
 
@@ -2069,11 +2347,16 @@ async def redmine_upload_project_file(
 
     async def factory(client, cache):
         return await files.upload_project_file(
-            client, cache,
-            project_id=pid, file_path=file_path,
+            client,
+            cache,
+            project_id=pid,
+            file_path=file_path,
             allowed_directories=allowed,
-            filename=fn, description=desc, version_id=vid,
+            filename=fn,
+            description=desc,
+            version_id=vid,
         )
+
     return await _wrap(factory, write=True)
 
 
@@ -2100,6 +2383,7 @@ async def redmine_get_user(
 
     async def factory(client, cache):
         return await users.get_user(client, cache, user_id=uid, include=inc)
+
     return await _wrap(factory)
 
 
@@ -2130,10 +2414,15 @@ async def redmine_list_users(
 
     async def factory(client, cache):
         return await users.list_users(
-            client, cache,
-            name=n, group_id=gid, status=st,
-            limit=limit, offset=offset,
+            client,
+            cache,
+            name=n,
+            group_id=gid,
+            status=st,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -2185,6 +2474,7 @@ async def redmine_search(
         rt = resource_types or None
     elif resource_types:
         import json as _json
+
         try:
             parsed = _json.loads(resource_types)
             rt = parsed if isinstance(parsed, list) else None
@@ -2193,12 +2483,19 @@ async def redmine_search(
 
     async def factory(client, cache):
         return await search.search(
-            client, cache,
-            query=query, project=proj, resource_types=rt,
-            all_words=all_words, titles_only=titles_only,
-            open_issues=open_issues, attachments=attachments,
-            limit=limit, offset=offset,
+            client,
+            cache,
+            query=query,
+            project=proj,
+            resource_types=rt,
+            all_words=all_words,
+            titles_only=titles_only,
+            open_issues=open_issues,
+            attachments=attachments,
+            limit=limit,
+            offset=offset,
         )
+
     return await _wrap(factory)
 
 
@@ -2234,16 +2531,18 @@ async def redmine_request(
     """
     cfg = _get_config()
     if not cfg.enable_passthrough:
-        return _dump({
-            "error": "passthrough_disabled",
-            "hint": (
-                "redmine_request is opt-in. Set "
-                "REDMINE_MCP_ENABLE_PASSTHROUGH=true to enable. "
-                "Prefer the validated tools (redmine_get_issue etc.) "
-                "whenever they cover your use case."
-            ),
-            "validation_skipped": True,
-        })
+        return _dump(
+            {
+                "error": "passthrough_disabled",
+                "hint": (
+                    "redmine_request is opt-in. Set "
+                    "REDMINE_MCP_ENABLE_PASSTHROUGH=true to enable. "
+                    "Prefer the validated tools (redmine_get_issue etc.) "
+                    "whenever they cover your use case."
+                ),
+                "validation_skipped": True,
+            }
+        )
 
     body_json: dict | None = None
     if isinstance(body, dict):
@@ -2252,11 +2551,13 @@ async def redmine_request(
         try:
             body_json = json.loads(body)
         except json.JSONDecodeError as e:
-            return _dump({
-                "error": "passthrough_body_invalid_json",
-                "hint": f"body must be valid JSON: {e}",
-                "validation_skipped": True,
-            })
+            return _dump(
+                {
+                    "error": "passthrough_body_invalid_json",
+                    "hint": f"body must be valid JSON: {e}",
+                    "validation_skipped": True,
+                }
+            )
 
     params_json: dict | None = None
     if isinstance(params, dict):
@@ -2265,20 +2566,26 @@ async def redmine_request(
         try:
             params_json = json.loads(params)
         except json.JSONDecodeError as e:
-            return _dump({
-                "error": "passthrough_params_invalid_json",
-                "hint": f"params must be valid JSON: {e}",
-                "validation_skipped": True,
-            })
+            return _dump(
+                {
+                    "error": "passthrough_params_invalid_json",
+                    "hint": f"params must be valid JSON: {e}",
+                    "validation_skipped": True,
+                }
+            )
 
     is_write = (method or "").strip().upper() != "GET"
 
     async def factory(client, cache):
         return await passthrough.request(
-            client, cache,
-            method=method, path=path,
-            body=body_json, params=params_json,
+            client,
+            cache,
+            method=method,
+            path=path,
+            body=body_json,
+            params=params_json,
         )
+
     return await _wrap(factory, write=is_write)
 
 

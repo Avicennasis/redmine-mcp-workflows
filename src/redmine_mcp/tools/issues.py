@@ -23,6 +23,7 @@ Validation flow for ``update_issue`` (see ``docs/workflow-validation.md``):
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from ..cache.schema_db import SchemaCache
@@ -101,14 +102,12 @@ async def _resolve_project_id(
     target = ident_str.strip().lower()
     for project in listing.get("projects", []):
         if str(project.get("name", "")).strip().lower() == target:
-            try:
+            with contextlib.suppress(KeyError, TypeError, ValueError):
                 cache.put_project(
                     project_id=int(project["id"]),
                     identifier=project.get("identifier", project["name"]),
                     schema=project,
                 )
-            except (KeyError, TypeError, ValueError):
-                pass
             return _try_int(project.get("id"))
     return None
 
@@ -187,9 +186,7 @@ def _name_for_role(roles: list[dict[str, Any]], role_id: int) -> str:
     return f"role#{role_id}"
 
 
-def _has_difficulty_entry(
-    custom_fields: list[dict[str, Any]] | None, field_id: int
-) -> bool:
+def _has_difficulty_entry(custom_fields: list[dict[str, Any]] | None, field_id: int) -> bool:
     """True if ``custom_fields`` already carries a Difficulty entry.
 
     Accepts entries identified either by name (``"Difficulty"``) or by
@@ -259,9 +256,7 @@ async def _apply_difficulty(
     from ..schema import custom_fields as cf_module
 
     try:
-        field = await cf_module.get_custom_field_by_name(
-            client, cache, DIFFICULTY_FIELD_NAME
-        )
+        field = await cf_module.get_custom_field_by_name(client, cache, DIFFICULTY_FIELD_NAME)
     except Exception:  # noqa: BLE001 — enrichment, not load-bearing
         field = None
     if field is None:
@@ -296,27 +291,27 @@ async def _apply_held(
 
     if held is not None:
         try:
-            field = await cf_module.get_custom_field_by_name(
-                client, cache, HELD_FIELD_NAME
-            )
+            field = await cf_module.get_custom_field_by_name(client, cache, HELD_FIELD_NAME)
         except Exception:
             field = None
         if field is not None:
             custom_fields = _merge_custom_field(
-                custom_fields, int(field["id"]), "1" if held else "",
+                custom_fields,
+                int(field["id"]),
+                "1" if held else "",
                 field_name=HELD_FIELD_NAME,
             )
 
     if held_until is not None:
         try:
-            field = await cf_module.get_custom_field_by_name(
-                client, cache, HELD_UNTIL_FIELD_NAME
-            )
+            field = await cf_module.get_custom_field_by_name(client, cache, HELD_UNTIL_FIELD_NAME)
         except Exception:
             field = None
         if field is not None:
             custom_fields = _merge_custom_field(
-                custom_fields, int(field["id"]), held_until,
+                custom_fields,
+                int(field["id"]),
+                held_until,
                 field_name=HELD_UNTIL_FIELD_NAME,
             )
 
@@ -399,9 +394,7 @@ async def create_issue(
     custom_fields = await _apply_difficulty(
         client, cache, custom_fields, difficulty, default_fill=True
     )
-    custom_fields = await _apply_held(
-        client, cache, custom_fields, held, held_until
-    )
+    custom_fields = await _apply_held(client, cache, custom_fields, held, held_until)
 
     project_id = await _resolve_project_id(client, cache, project)
     if project_id is None:
@@ -533,9 +526,7 @@ async def update_issue(
     custom_fields = await _apply_difficulty(
         client, cache, custom_fields, difficulty, default_fill=False
     )
-    custom_fields = await _apply_held(
-        client, cache, custom_fields, held, held_until
-    )
+    custom_fields = await _apply_held(client, cache, custom_fields, held, held_until)
 
     target_status_id: int | None = None
     if status is not None:
@@ -549,15 +540,12 @@ async def update_issue(
                 "status": status,
             }
 
-    status_changing = (
-        target_status_id is not None and target_status_id != current_status_id
-    )
+    status_changing = target_status_id is not None and target_status_id != current_status_id
 
     if status_changing and target_status_id is not None:
         statuses = cache.get_meta_json("issue_statuses") or []
         target_is_closed = any(
-            s.get("id") == target_status_id and s.get("is_closed")
-            for s in statuses
+            s.get("id") == target_status_id and s.get("is_closed") for s in statuses
         )
         if target_is_closed:
             held_err = field_validators.check_held_gate(issue)
@@ -678,8 +666,7 @@ async def update_issue(
             actual_name = _name_for_status(statuses, actual_status_id)
             requested_name = _name_for_status(statuses, target_status_id)  # type: ignore[arg-type]
             target_is_closed = any(
-                s.get("id") == target_status_id and s.get("is_closed")
-                for s in statuses
+                s.get("id") == target_status_id and s.get("is_closed") for s in statuses
             )
             children = final["issue"].get("children") or []
             hint = (
@@ -834,9 +821,7 @@ async def search_issues(
         if isinstance(status, str) and status in {"open", "closed", "*"}:
             params["status_id"] = status
         else:
-            status_id = await _resolve_enum_id(
-                client, cache, kind="issue_statuses", ident=status
-            )
+            status_id = await _resolve_enum_id(client, cache, kind="issue_statuses", ident=status)
             if status_id is None:
                 return {
                     "error": "status_not_found",
@@ -847,11 +832,7 @@ async def search_issues(
 
     payload = await client.get("/issues.json", params=params)
     issues = payload.get("issues", []) if isinstance(payload, dict) else []
-    total = (
-        payload.get("total_count", len(issues))
-        if isinstance(payload, dict)
-        else len(issues)
-    )
+    total = payload.get("total_count", len(issues)) if isinstance(payload, dict) else len(issues)
     return {
         "issues": issues,
         "total_count": total,

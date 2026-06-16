@@ -104,9 +104,7 @@ class WorkflowTransitionDisallowed(StructuredError):
     ) -> None:
         super().__init__(error="workflow_transition_disallowed")
         if allowed_next_states:
-            self.hint = (
-                f"Try one of: {', '.join(allowed_next_states)}."
-            )
+            self.hint = f"Try one of: {', '.join(allowed_next_states)}."
         else:
             self.hint = (
                 "No allowed next states have been observed yet. "
@@ -171,8 +169,7 @@ class CustomFieldShapeError(StructuredError):
     def __init__(self, *, entry: Any, reason: str) -> None:
         super().__init__(error="custom_field_shape_error")
         self.hint = (
-            "Each custom_fields entry must be a dict with 'id' and 'value'. "
-            f"Reason: {reason}"
+            f"Each custom_fields entry must be a dict with 'id' and 'value'. Reason: {reason}"
         )
         self.extra = {"entry": entry, "reason": reason}
 
@@ -185,9 +182,7 @@ class RoleNotAuthorized(StructuredError):
 
     def __init__(self, *, required: list[str], current: list[str]) -> None:
         super().__init__(error="role_not_authorized")
-        self.hint = (
-            f"Operation requires one of {required}; current roles: {current}."
-        )
+        self.hint = f"Operation requires one of {required}; current roles: {current}."
         self.extra = {"required_roles": required, "current_roles": current}
 
 
@@ -222,8 +217,7 @@ class AttachmentPathDenied(StructuredError):
         super().__init__(error="attachment_path_denied")
         if reason == "not_a_file":
             self.hint = (
-                f"{path!r} is not a regular file (missing, a directory, or a "
-                "broken symlink)."
+                f"{path!r} is not a regular file (missing, a directory, or a broken symlink)."
             )
         elif reason == "parent_missing":
             self.hint = (
@@ -231,9 +225,7 @@ class AttachmentPathDenied(StructuredError):
                 "directory). Create it before downloading."
             )
         elif reason == "exists_no_overwrite":
-            self.hint = (
-                f"{path!r} already exists. Pass overwrite=True to replace it."
-            )
+            self.hint = f"{path!r} already exists. Pass overwrite=True to replace it."
         else:
             self.hint = (
                 f"{path!r} resolves outside the configured allowed directories. "
@@ -261,9 +253,7 @@ class IssueHeld(StructuredError):
     ) -> None:
         super().__init__(error="issue_held")
         date_suffix = f" (held until {held_until})" if held_until else ""
-        self.hint = (
-            f'Cannot close #{issue_id}: held — "{held_reason}"{date_suffix}'
-        )
+        self.hint = f'Cannot close #{issue_id}: held — "{held_reason}"{date_suffix}'
         self.extra = {
             "issue_id": issue_id,
             "held_reason": held_reason,

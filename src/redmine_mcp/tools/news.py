@@ -86,7 +86,8 @@ async def create_news(
 
     try:
         resp = await client.post(
-            f"/projects/{project}/news.json", json={"news": body},
+            f"/projects/{project}/news.json",
+            json={"news": body},
         )
     except RedmineAPIError as e:
         return e.as_structured()
@@ -96,7 +97,8 @@ async def create_news(
     if news_item is None:
         try:
             refetch = await client.get(
-                f"/projects/{project}/news.json", params={"limit": 1},
+                f"/projects/{project}/news.json",
+                params={"limit": 1},
             )
             entries = refetch.get("news", []) if isinstance(refetch, dict) else []
             if entries:

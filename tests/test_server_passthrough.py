@@ -38,7 +38,7 @@ class _FakeClient:
     def __init__(self, *_: Any, **__: Any) -> None:
         pass
 
-    async def __aenter__(self) -> "_FakeClient":
+    async def __aenter__(self) -> _FakeClient:
         return self
 
     async def __aexit__(self, *args: Any) -> None:

@@ -75,11 +75,16 @@ def cache(tmp_path: Path) -> SchemaCache:
 
 
 async def test_get_happy_path(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/custom_fields.json"): {"custom_fields": [{"id": 1, "name": "OS"}]},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/custom_fields.json"): {"custom_fields": [{"id": 1, "name": "OS"}]},
+        }
+    )
     result = await passthrough.request(
-        client, cache, method="GET", path="/custom_fields.json",
+        client,
+        cache,
+        method="GET",
+        path="/custom_fields.json",
     )
     assert result["validation_skipped"] is True
     assert result["method"] == "GET"
@@ -89,22 +94,32 @@ async def test_get_happy_path(cache: SchemaCache) -> None:
 
 
 async def test_get_with_query_params(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("GET", "/issues.json"): {"issues": []},
-    })
+    client = FakeClient(
+        {
+            ("GET", "/issues.json"): {"issues": []},
+        }
+    )
     await passthrough.request(
-        client, cache, method="GET", path="/issues.json",
+        client,
+        cache,
+        method="GET",
+        path="/issues.json",
         params={"sort": "id:desc", "limit": 5},
     )
     assert client.calls[0][3] == {"sort": "id:desc", "limit": 5}
 
 
 async def test_post_happy_path(cache: SchemaCache) -> None:
-    client = FakeClient({
-        ("POST", "/uploads.json"): {"upload": {"token": "abc.def"}},
-    })
+    client = FakeClient(
+        {
+            ("POST", "/uploads.json"): {"upload": {"token": "abc.def"}},
+        }
+    )
     result = await passthrough.request(
-        client, cache, method="POST", path="/uploads.json",
+        client,
+        cache,
+        method="POST",
+        path="/uploads.json",
         body={"foo": "bar"},
     )
     assert result["validation_skipped"] is True
@@ -115,7 +130,10 @@ async def test_post_happy_path(cache: SchemaCache) -> None:
 async def test_put_happy_path(cache: SchemaCache) -> None:
     client = FakeClient({("PUT", "/issues/42.json"): None})
     result = await passthrough.request(
-        client, cache, method="PUT", path="/issues/42.json",
+        client,
+        cache,
+        method="PUT",
+        path="/issues/42.json",
         body={"issue": {"subject": "renamed"}},
     )
     assert result["validation_skipped"] is True
@@ -125,7 +143,10 @@ async def test_put_happy_path(cache: SchemaCache) -> None:
 async def test_delete_happy_path(cache: SchemaCache) -> None:
     client = FakeClient({("DELETE", "/issues/42.json"): None})
     result = await passthrough.request(
-        client, cache, method="DELETE", path="/issues/42.json",
+        client,
+        cache,
+        method="DELETE",
+        path="/issues/42.json",
     )
     assert result["validation_skipped"] is True
     assert result["method"] == "DELETE"
@@ -140,7 +161,10 @@ async def test_method_case_normalized(cache: SchemaCache) -> None:
     """Lowercase methods (get/post/etc.) normalize to uppercase."""
     client = FakeClient({("GET", "/x.json"): {"ok": True}})
     result = await passthrough.request(
-        client, cache, method="get", path="/x.json",
+        client,
+        cache,
+        method="get",
+        path="/x.json",
     )
     assert result["method"] == "GET"
     assert client.calls[0][0] == "GET"
@@ -149,7 +173,10 @@ async def test_method_case_normalized(cache: SchemaCache) -> None:
 async def test_unknown_method_rejected(cache: SchemaCache) -> None:
     client = FakeClient()
     result = await passthrough.request(
-        client, cache, method="OPTIONS", path="/x.json",
+        client,
+        cache,
+        method="OPTIONS",
+        path="/x.json",
     )
     assert result["error"] == "passthrough_method_unknown"
     assert "GET" in result["allowed_methods"]
@@ -161,7 +188,10 @@ async def test_unknown_method_rejected(cache: SchemaCache) -> None:
 async def test_empty_path_rejected(cache: SchemaCache) -> None:
     client = FakeClient()
     result = await passthrough.request(
-        client, cache, method="GET", path="",
+        client,
+        cache,
+        method="GET",
+        path="",
     )
     assert result["error"] == "passthrough_path_invalid"
     assert client.calls == []
@@ -171,7 +201,10 @@ async def test_path_without_leading_slash_rejected(cache: SchemaCache) -> None:
     """Paths must start with /. Don't silently auto-prepend — surprises bite."""
     client = FakeClient()
     result = await passthrough.request(
-        client, cache, method="GET", path="issues.json",
+        client,
+        cache,
+        method="GET",
+        path="issues.json",
     )
     assert result["error"] == "passthrough_path_invalid"
     assert client.calls == []
@@ -187,13 +220,19 @@ async def test_api_error_propagates_with_validation_skipped_flag(
 ) -> None:
     """Even the error envelope carries the warning so caller knows
     they bypassed the validation layer when this 422'd."""
-    client = FakeClient(errors={
-        ("POST", "/some/endpoint.json"): RedmineAPIError(
-            status_code=422, body={"errors": ["something is invalid"]},
-        ),
-    })
+    client = FakeClient(
+        errors={
+            ("POST", "/some/endpoint.json"): RedmineAPIError(
+                status_code=422,
+                body={"errors": ["something is invalid"]},
+            ),
+        }
+    )
     result = await passthrough.request(
-        client, cache, method="POST", path="/some/endpoint.json",
+        client,
+        cache,
+        method="POST",
+        path="/some/endpoint.json",
         body={"x": 1},
     )
     assert result["error"] == "redmine_api_422"
@@ -214,7 +253,10 @@ async def test_validation_skipped_present_on_every_success(
     client = FakeClient({("GET", "/x.json"): {"ok": True}})
     for method in ("GET",):
         result = await passthrough.request(
-            client, cache, method=method, path="/x.json",
+            client,
+            cache,
+            method=method,
+            path="/x.json",
         )
         assert "validation_skipped" in result
         assert result["validation_skipped"] is True
@@ -224,7 +266,10 @@ async def test_warning_field_explains_why(cache: SchemaCache) -> None:
     """A human-readable hint explaining what was skipped."""
     client = FakeClient({("GET", "/x.json"): {"ok": True}})
     result = await passthrough.request(
-        client, cache, method="GET", path="/x.json",
+        client,
+        cache,
+        method="GET",
+        path="/x.json",
     )
     assert "warning" in result
     assert "validation" in result["warning"].lower()

@@ -118,7 +118,7 @@ async def update_project(
 
     try:
         resp = await client.get(f"/projects/{project_id}.json")
-    except RedmineAPIError as e:
+    except RedmineAPIError:
         return {"updated": True, "project_id": project_id, "source": "api"}
 
     project = resp.get("project") if isinstance(resp, dict) else None

@@ -225,8 +225,7 @@ async def upload_attachment(
             err = e.as_structured()
             err["upload"] = result["upload"]
             err["hint"] = (
-                (err.get("hint") or "")
-                + " Upload succeeded; attaching to the issue failed. "
+                (err.get("hint") or "") + " Upload succeeded; attaching to the issue failed. "
                 "Retry the attach with the returned token."
             ).strip()
             return err
@@ -245,7 +244,9 @@ async def upload_attachment(
             # eat the token. Caller can manually verify if needed.
             return result
         last_get_payload = verify_payload
-        issue_dict = (verify_payload or {}).get("issue") if isinstance(verify_payload, dict) else None
+        issue_dict = (
+            (verify_payload or {}).get("issue") if isinstance(verify_payload, dict) else None
+        )
         attachments = (issue_dict or {}).get("attachments") or []
         if any(a.get("filename") == filename for a in attachments):
             last_attempt_attached = True
@@ -307,9 +308,7 @@ async def download_attachment(
     "source": "api"}`` on success, or a structured error.
     """
     target = Path(save_to)
-    ok, reason = _is_save_path_allowed(
-        target, allowed_directories, overwrite=overwrite
-    )
+    ok, reason = _is_save_path_allowed(target, allowed_directories, overwrite=overwrite)
     if not ok:
         return AttachmentPathDenied(
             path=save_to,
@@ -334,9 +333,7 @@ async def download_attachment(
     content_type = meta.get("content_type") or "application/octet-stream"
 
     try:
-        data = await client.get_binary(
-            f"/attachments/download/{attachment_id}/{filename}"
-        )
+        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename}")
     except RedmineAPIError as e:
         return e.as_structured()
 

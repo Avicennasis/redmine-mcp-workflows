@@ -74,7 +74,11 @@ class Config:
         oauth_token = secrets.load_oauth_token(e.get("REDMINE_MCP_SECRETS_FILE"), env=e)
 
         cache_dir_str = e.get("REDMINE_MCP_CACHE_DIR")
-        cache_dir = Path(cache_dir_str).expanduser() if cache_dir_str else Path(user_cache_dir("redmine-mcp"))
+        cache_dir = (
+            Path(cache_dir_str).expanduser()
+            if cache_dir_str
+            else Path(user_cache_dir("redmine-mcp"))
+        )
 
         try:
             cache_ttl = int(e.get("REDMINE_MCP_CACHE_TTL", DEFAULT_CACHE_TTL_SECONDS))

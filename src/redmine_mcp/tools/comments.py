@@ -128,9 +128,7 @@ async def get_journals(
     issue payload. ``details`` on each journal records field changes;
     ``notes`` carries the comment body.
     """
-    result = await issues_module.get_issue(
-        client, cache, issue_id, include="journals"
-    )
+    result = await issues_module.get_issue(client, cache, issue_id, include="journals")
     if "error" in result:
         return result
     issue = result.get("issue") or {}
