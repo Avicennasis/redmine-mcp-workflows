@@ -1399,6 +1399,13 @@ async def redmine_bulk_update_issues(
     priority: str = "",
     assigned_to_id: int = 0,
     notes: str = "",
+    custom_fields: list | str = "",
+    difficulty: str = "",
+    held: bool = False,
+    held_until: str = "",
+    due_date: str = "",
+    start_date: str = "",
+    done_ratio: int = -1,
     stop_on_error: bool = False,
 ) -> str:
     """Apply the same field updates to many issues in one call.
@@ -1408,6 +1415,17 @@ async def redmine_bulk_update_issues(
         subject, description, status, priority, assigned_to_id, notes:
             same semantics as ``redmine_update_issue`` — at least one
             must be supplied.
+        custom_fields: raw custom-field entries (list of ``{"id": N,
+            "value": "..."}`` dicts). Merged into each issue's PUT.
+        difficulty: convenience for the Difficulty custom field
+            (``"Unclassified"`` / ``"Easy"`` / ``"Normal"`` / ``"Hard"``).
+        held: ``True`` marks every issue as held. ``False`` (default)
+            means unchanged.
+        held_until: ISO-8601 date for the Held Until custom field.
+        due_date: ISO-8601 date to set on every issue.
+        start_date: ISO-8601 date to set on every issue.
+        done_ratio: 0-100 progress percent; ``-1`` (default) means
+            unchanged.
         stop_on_error: if True, halt at the first failure (remaining
             ids land in ``skipped``); otherwise best-effort across the
             whole batch.
@@ -1421,6 +1439,13 @@ async def redmine_bulk_update_issues(
     pri: int | str | None = priority if priority else None
     assignee = assigned_to_id if assigned_to_id else None
     nt = notes if notes else None
+    cf = custom_fields if isinstance(custom_fields, list) and custom_fields else None
+    diff = difficulty if difficulty else None
+    h = held if held else None
+    hu = held_until if held_until else None
+    dd = due_date if due_date else None
+    sd = start_date if start_date else None
+    dr = done_ratio if done_ratio != -1 else None
 
     async def factory(client, cache):
         return await bulk.bulk_update_issues(
@@ -1433,6 +1458,13 @@ async def redmine_bulk_update_issues(
             priority=pri,
             assigned_to_id=assignee,
             notes=nt,
+            custom_fields=cf,
+            difficulty=diff,
+            held=h,
+            held_until=hu,
+            due_date=dd,
+            start_date=sd,
+            done_ratio=dr,
             stop_on_error=stop_on_error,
         )
 

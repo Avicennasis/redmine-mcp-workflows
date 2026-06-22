@@ -159,6 +159,13 @@ async def test_bulk_update_propagates_all_supported_fields(
         priority="High",
         assigned_to_id=7,
         notes="batched",
+        custom_fields=[{"id": 2, "value": "Org at PR capacity (3/3)"}],
+        difficulty="Hard",
+        held=True,
+        held_until="2026-12-01",
+        due_date="2026-12-31",
+        start_date="2026-06-01",
+        done_ratio=50,
     )
     assert captured["subject"] == "new subject"
     assert captured["description"] == "new desc"
@@ -166,6 +173,13 @@ async def test_bulk_update_propagates_all_supported_fields(
     assert captured["priority"] == "High"
     assert captured["assigned_to_id"] == 7
     assert captured["notes"] == "batched"
+    assert captured["custom_fields"] == [{"id": 2, "value": "Org at PR capacity (3/3)"}]
+    assert captured["difficulty"] == "Hard"
+    assert captured["held"] is True
+    assert captured["held_until"] == "2026-12-01"
+    assert captured["due_date"] == "2026-12-31"
+    assert captured["start_date"] == "2026-06-01"
+    assert captured["done_ratio"] == 50
 
 
 async def test_bulk_update_caps_batch_size(cache: SchemaCache) -> None:

@@ -39,9 +39,9 @@ from . import issues as issues_module
 DEFAULT_BULK_CREATE_PACING_S: float = 0.05
 
 # Cap batch size to keep latency bounded and avoid accidentally PUTting
-# the entire instance. 100 mirrors Redmine's pagination limit so callers
-# can think in "pages of issues".
-MAX_BATCH_SIZE = 100
+# the entire instance. Redmine has no batch endpoint — these are sequential
+# PUTs — so the cap is a safety guardrail, not an API limit.
+MAX_BATCH_SIZE = 1000
 
 
 def _validation_error(hint: str, *, field: str = "issue_ids") -> dict[str, Any]:
@@ -85,6 +85,13 @@ async def bulk_update_issues(
     priority: int | str | None = None,
     assigned_to_id: int | None = None,
     notes: str | None = None,
+    custom_fields: list[dict[str, Any]] | None = None,
+    difficulty: str | None = None,
+    held: bool | None = None,
+    held_until: str | None = None,
+    due_date: str | None = None,
+    start_date: str | None = None,
+    done_ratio: int | None = None,
     stop_on_error: bool = False,
 ) -> dict[str, Any]:
     """Apply the same field updates to every issue in ``issue_ids``.
@@ -110,6 +117,20 @@ async def bulk_update_issues(
         update_kwargs["assigned_to_id"] = assigned_to_id
     if notes is not None:
         update_kwargs["notes"] = notes
+    if custom_fields is not None:
+        update_kwargs["custom_fields"] = custom_fields
+    if difficulty is not None:
+        update_kwargs["difficulty"] = difficulty
+    if held is not None:
+        update_kwargs["held"] = held
+    if held_until is not None:
+        update_kwargs["held_until"] = held_until
+    if due_date is not None:
+        update_kwargs["due_date"] = due_date
+    if start_date is not None:
+        update_kwargs["start_date"] = start_date
+    if done_ratio is not None:
+        update_kwargs["done_ratio"] = done_ratio
 
     if not update_kwargs:
         return _validation_error(
