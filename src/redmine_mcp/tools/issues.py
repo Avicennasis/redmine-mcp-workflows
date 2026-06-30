@@ -186,22 +186,33 @@ def _name_for_role(roles: list[dict[str, Any]], role_id: int) -> str:
     return f"role#{role_id}"
 
 
-def _has_difficulty_entry(custom_fields: list[dict[str, Any]] | None, field_id: int) -> bool:
-    """True if ``custom_fields`` already carries a Difficulty entry.
+def _has_custom_field_entry(
+    custom_fields: list[dict[str, Any]] | None,
+    field_id: int,
+    field_name: str,
+) -> bool:
+    """True if ``custom_fields`` already carries an entry for the given field.
 
-    Accepts entries identified either by name (``"Difficulty"``) or by
-    the resolved numeric id, since callers may use either shape.
+    Accepts entries identified either by ``name`` or by the resolved
+    numeric ``id``, since callers may use either shape.
     """
     if not custom_fields:
         return False
     for entry in custom_fields:
         if not isinstance(entry, dict):
             continue
-        if entry.get("name") == DIFFICULTY_FIELD_NAME:
+        if entry.get("name") == field_name:
             return True
         if entry.get("id") == field_id:
             return True
     return False
+
+
+def _has_difficulty_entry(
+    custom_fields: list[dict[str, Any]] | None, field_id: int
+) -> bool:
+    """True if ``custom_fields`` already carries a Difficulty entry."""
+    return _has_custom_field_entry(custom_fields, field_id, DIFFICULTY_FIELD_NAME)
 
 
 def _merge_custom_field(
@@ -283,6 +294,11 @@ async def _apply_held(
     Returns the (possibly modified) ``custom_fields`` list.
     Silently returns ``custom_fields`` unchanged if the Held fields
     aren't discoverable in Redmine.
+
+    If the caller already provided an explicit ``custom_fields`` entry
+    for the same field id, the explicit entry wins and the convenience
+    parameter is skipped for that field.  This prevents ``held=True``
+    from overwriting a user-supplied reason string with the bare ``"1"``.
     """
     if held is None and held_until is None:
         return custom_fields
@@ -295,12 +311,15 @@ async def _apply_held(
         except Exception:
             field = None
         if field is not None:
-            custom_fields = _merge_custom_field(
-                custom_fields,
-                int(field["id"]),
-                "1" if held else "",
-                field_name=HELD_FIELD_NAME,
-            )
+            field_id = int(field["id"])
+            # Explicit custom_fields entry for this field takes precedence.
+            if not _has_custom_field_entry(custom_fields, field_id, HELD_FIELD_NAME):
+                custom_fields = _merge_custom_field(
+                    custom_fields,
+                    field_id,
+                    "1" if held else "",
+                    field_name=HELD_FIELD_NAME,
+                )
 
     if held_until is not None:
         try:
@@ -308,12 +327,15 @@ async def _apply_held(
         except Exception:
             field = None
         if field is not None:
-            custom_fields = _merge_custom_field(
-                custom_fields,
-                int(field["id"]),
-                held_until,
-                field_name=HELD_UNTIL_FIELD_NAME,
-            )
+            field_id = int(field["id"])
+            # Explicit custom_fields entry for this field takes precedence.
+            if not _has_custom_field_entry(custom_fields, field_id, HELD_UNTIL_FIELD_NAME):
+                custom_fields = _merge_custom_field(
+                    custom_fields,
+                    field_id,
+                    held_until,
+                    field_name=HELD_UNTIL_FIELD_NAME,
+                )
 
     return custom_fields
 
