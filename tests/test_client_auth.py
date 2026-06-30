@@ -1,4 +1,4 @@
-"""Auth-header tests for RedmineClient (ClaudeCode#2383).
+"""Auth-header tests for RedmineClient.
 
 Locks in that the wrapper actually uses OAuth bearer when configured,
 falls back to X-Redmine-API-Key when only the API key is set, and raises

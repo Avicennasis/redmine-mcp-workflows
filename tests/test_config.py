@@ -108,7 +108,7 @@ def test_enable_passthrough_falsey_values() -> None:
         assert cfg.enable_passthrough is False, value
 
 
-# ---- OAuth2 bearer token (ClaudeCode#2383) ----
+# ---- OAuth2 bearer token ----
 
 
 def test_oauth_token_loaded_from_env_var(tmp_path: Path) -> None:

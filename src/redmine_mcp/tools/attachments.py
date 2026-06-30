@@ -38,7 +38,7 @@ from ..client import RedmineClient
 from ..errors import AttachmentPathDenied, RedmineAPIError
 
 # Post-PUT verify retry backoff seconds — empirically 5s is enough to clear
-# Redmine's per-issue rate-limiting silent-drop window (ClaudeCode#3139).
+# Redmine's per-issue rate-limiting silent-drop window.
 # Tunable for tests (which monkeypatch to (0, 0)).
 ATTACHMENT_VERIFY_BACKOFFS: tuple[float, ...] = (2.0, 5.0)
 
@@ -203,7 +203,7 @@ async def upload_attachment(
     if description:
         attachment_entry["description"] = description
 
-    # ClaudeCode#3139: Redmine's PUT /issues/{id}.json with uploads silently
+    # the original ticket: Redmine's PUT /issues/{id}.json with uploads silently
     # drops the attachment under per-issue rate pressure (observed: ~1 PUT/sec
     # cap). HTTP 200 is returned regardless. We do the PUT, then GET-verify
     # the attachment landed; if not, sleep + retry PUT with the same token

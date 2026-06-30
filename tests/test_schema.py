@@ -309,7 +309,7 @@ async def test_list_projects_query_filters_client_side() -> None:
 
 @pytest.mark.asyncio
 async def test_list_projects_query_walks_all_pages() -> None:
-    """Regression for infra#2579 Finding 3: query must catch matches on
+    """Regression for Finding 3: query must catch matches on
     later pages, not just the first page of results. Previously the filter
     only saw the limit-bounded first page, so e.g. query="mcp" with default
     limit=25 missed `kronos-mcp` (id 30) even though it existed."""

@@ -562,7 +562,7 @@ async def test_update_issue_passes_fixed_version_id(cache: SchemaCache) -> None:
 
 
 async def test_update_issue_passes_due_date(cache: SchemaCache) -> None:
-    """Regression for ClaudeCode#2734: due_date must reach the API."""
+    """Regression for due_date must reach the API."""
     _seed_enums(cache)
     _seed_tracker_and_project(cache)
     client = FakeClient(
@@ -577,7 +577,7 @@ async def test_update_issue_passes_due_date(cache: SchemaCache) -> None:
 
 
 async def test_update_issue_passes_start_date(cache: SchemaCache) -> None:
-    """Regression for ClaudeCode#2734: start_date must reach the API."""
+    """Regression for start_date must reach the API."""
     _seed_enums(cache)
     _seed_tracker_and_project(cache)
     client = FakeClient(
@@ -906,7 +906,7 @@ async def test_update_issue_propagates_get_404(cache: SchemaCache) -> None:
 
 
 async def test_update_issue_detects_silent_status_no_op(cache: SchemaCache) -> None:
-    """Regression for infra#2579 Findings 1+2: when Redmine returns 2xx but
+    """Regression for Findings 1+2: when Redmine returns 2xx but
     the status_id didn't actually move (e.g. block_descendants_issues_closing
     with open subtasks, or a custom workflow rule the cache hasn't observed
     yet), the caller used to get a success-looking payload. Now they get a
@@ -1243,7 +1243,7 @@ async def test_search_issues_resolves_named_status(cache: SchemaCache) -> None:
 
 
 async def test_search_issues_forwards_query_id(cache: SchemaCache) -> None:
-    """ClaudeCode#2744: query_id invokes a Redmine saved query."""
+    """query_id invokes a Redmine saved query."""
     client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
     await issues.search_issues(client, cache, query_id=12)
     params = next(c for c in client.calls if c[0] == "GET")[2]

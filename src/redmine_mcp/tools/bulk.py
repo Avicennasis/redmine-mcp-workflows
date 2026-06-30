@@ -1,8 +1,8 @@
-"""Bulk-operation tools (Redmine #2381 + ClaudeCode#3141).
+"""Bulk-operation tools (Redmine #2381 + the original ticket).
 
 Tools (3):
   - bulk_create_issues — create many issues from per-spec dicts, with
-                         subject-based idempotency (ClaudeCode#3141)
+                         subject-based idempotency
   - bulk_update_issues — apply uniform field updates across many issues
   - bulk_close         — close many issues in one call (with optional note)
 
@@ -34,7 +34,7 @@ from . import issues as issues_module
 
 # Default sleep between per-issue POSTs in bulk_create_issues. Empirically
 # 50ms is the floor for not tripping Redmine's per-issue update-rate cap
-# on the small dev VM (see ClaudeCode#3139 follow-up notes). Configurable
+# on the small dev VM (see the original ticket follow-up notes). Configurable
 # per-call.
 DEFAULT_BULK_CREATE_PACING_S: float = 0.05
 

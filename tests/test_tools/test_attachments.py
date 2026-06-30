@@ -19,7 +19,7 @@ class FakeClient:
     list of payloads (queue — each call pops the next; the last entry is
     reused if the list runs out). The queue form lets tests model
     sequential GETs that need to differ — e.g. pre-PUT vs post-PUT
-    verification reads in the attachment retry path (ClaudeCode#3139).
+    verification reads in the attachment retry path.
     """
 
     def __init__(
@@ -196,7 +196,7 @@ async def test_upload_happy_path_attaches_to_issue(
         {
             ("POST_BIN", "/uploads.json"): {"upload": {"token": "tok", "id": 9}},
             ("PUT", "/issues/42.json"): None,
-            # Post-PUT verify GET (ClaudeCode#3139) — attachment is present.
+            # Post-PUT verify GET — attachment is present.
             ("GET", "/issues/42.json"): {
                 "issue": {"id": 42, "attachments": [{"id": 100, "filename": "sample.txt"}]},
             },
@@ -284,7 +284,7 @@ async def test_upload_recovers_from_silent_drop(
     sandbox: tuple[Path, tuple[Path, ...]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression for ClaudeCode#3139: first PUT silently drops the attachment
+    """Regression for first PUT silently drops the attachment
     (200 but attachments[] empty); after backoff a retry PUT lands it. The
     wrapper should succeed transparently."""
     # Zero out the backoffs so the test doesn't actually sleep.

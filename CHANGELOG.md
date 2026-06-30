@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.0] — 2026-06-02
 
 ### Added
-- **`redmine_update_journal` (#4470).** Edit an existing journal entry's
+- **`redmine_update_journal` .** Edit an existing journal entry's
   notes in place via `PUT /journals/:id.json` (Redmine 5.0+). The API
   user can edit their own notes; users with `edit_issue_notes` permission
   can edit any note. Passing empty notes on a details-only journal
@@ -40,12 +40,12 @@ Held-field gate: non-ticket blockers for Redmine issues.
 
 ## [0.5.0] — 2026-05-12
 
-Dogfood-driven fixes from infra#2579, ClaudeCode#2733, ClaudeCode#2734, ClaudeCode#3139.
-Feature work: ClaudeCode#2383 Path A (OAuth2 bearer token),
-ClaudeCode#2744 (saved-query lookups), and ClaudeCode#3141 (bulk-create).
+Dogfood-driven fixes from .
+Feature work:  Path A (OAuth2 bearer token),
+ (saved-query lookups), and  (bulk-create).
 
 ### Added
-- **`redmine_bulk_create_issues` (ClaudeCode#3141).** Bulk-create from
+- **`redmine_bulk_create_issues`.** Bulk-create from
   per-spec dicts with subject idempotency. Pre-checks each subject within
   its project via exact-match (post-filter on Redmine's substring-fuzzy
   `subject` filter) and reports existing matches per `on_duplicate`:
@@ -59,12 +59,12 @@ ClaudeCode#2744 (saved-query lookups), and ClaudeCode#3141 (bulk-create).
   fleet's `ServerOps/scripts/redmine/create-*.py` exemplars with a
   ~30-line call.
 - **`redmine_search_issues` accepts a `query_id` parameter
-  (ClaudeCode#2744).** Forwards to Redmine's `?query_id=N` so callers
+ .** Forwards to Redmine's `?query_id=N` so callers
   can invoke saved queries directly without dropping to the passthrough.
   Layers with `status` / `project` / `query` / `limit` / `offset` per
   Redmine's standard merge semantics. ``query_id=0`` (default) means
   no saved query — current behavior unchanged.
-- **OAuth2 bearer-token support (ClaudeCode#2383, Path A).** New
+- **OAuth2 bearer-token support (Path A).** New
   `REDMINE_OAUTH_TOKEN` env var (and matching `REDMINE_OAUTH_TOKEN=...`
   line in the secrets file) lets the wrapper authenticate via
   Doorkeeper-issued access tokens (Redmine 6.1+) sent as
@@ -91,7 +91,7 @@ ClaudeCode#2744 (saved-query lookups), and ClaudeCode#3141 (bulk-create).
 
 ### Fixed
 - **`redmine_upload_attachment` verifies the attachment actually attached
-  (ClaudeCode#3139).** Redmine's `PUT /issues/{id}.json` with `uploads:[...]`
+ .** Redmine's `PUT /issues/{id}.json` with `uploads:[...]`
   silently drops the attachment under per-issue rate pressure (observed:
   ~1 PUT/sec cap), returning HTTP 200 regardless. The wrapper now does a
   post-PUT `GET /issues/{id}.json?include=attachments` and checks that the
@@ -111,7 +111,7 @@ ClaudeCode#2744 (saved-query lookups), and ClaudeCode#3141 (bulk-create).
   can paginate over matches directly. Unfiltered behavior unchanged.
 
 - **`redmine_create_issue` and `redmine_update_issue` expose more fields
-  (ClaudeCode#2734).** New params on both:
+ .** New params on both:
   - `due_date: str = ""` (ISO-8601 date)
   - `start_date: str = ""` (ISO-8601 date)
   - `done_ratio: int = -1` (sentinel for unchanged; `0` is explicit)
@@ -119,9 +119,9 @@ ClaudeCode#2744 (saved-query lookups), and ClaudeCode#3141 (bulk-create).
   Plus `fixed_version_id` is now first-class on the `redmine_update_issue`
   MCP wrapper (it was already supported internally). Previously these
   fields were only reachable via `redmine_request`, which itself was
-  unusable (#2733). New `_normalize_custom_fields` helper handles the
+  unusable . New `_normalize_custom_fields` helper handles the
   dual list/string shape with a structured error for malformed input.
-- **`redmine_request` accepts dict bodies and params (ClaudeCode#2733).**
+- **`redmine_request` accepts dict bodies and params.**
   Some MCP transports auto-parse JSON-shaped string args into objects
   before the tool sees them, which caused pydantic to reject the input
   against the previous `body: str` schema with
@@ -183,7 +183,7 @@ Refs: serverops #2582, claudecode #2583.
   `redmine_create_issue` was failing with a generic `redmine_api_404`
   because the slug lookup raised, the listing fallback never ran, and
   there was no clue that "name vs slug" was the real problem
-  (#2568).
+  .
   - `_resolve_project_id` now falls through slug → cache-by-name →
     refreshed `/projects.json` listing-by-name before giving up.
     Successful name resolutions warm the cache so subsequent calls are
@@ -236,7 +236,7 @@ Refs: serverops #2582, claudecode #2583.
   total; ruff clean.
 
 - v0.3 first feature: `redmine_request` generic-passthrough escape hatch
-  (Redmine #2384) — 1 new
+  — 1 new
   tool, opt-in. 38 of the planned set live total.
   - `tools/passthrough.py` — sends arbitrary HTTP requests to any
     Redmine REST endpoint with NO validation, NO workflow check, and

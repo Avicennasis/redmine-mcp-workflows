@@ -293,7 +293,7 @@ async def test_bulk_close_caps_batch_size(cache: SchemaCache) -> None:
 
 
 # ---------------------------------------------------------------------
-# bulk_create_issues (ClaudeCode#3141)
+# bulk_create_issues
 # ---------------------------------------------------------------------
 
 

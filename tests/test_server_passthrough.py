@@ -1,4 +1,4 @@
-"""Server-wrapper tests for redmine_request (infra#2733).
+"""Server-wrapper tests for redmine_request.
 
 The internal `passthrough.request()` already accepts dict bodies; the bug
 was at the FastMCP wrapper in `server.py`, which used to declare
@@ -69,7 +69,7 @@ async def test_redmine_request_accepts_string_body(monkeypatch: pytest.MonkeyPat
 
 @pytest.mark.asyncio
 async def test_redmine_request_accepts_dict_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Regression for infra#2733: when the MCP transport delivers `body`
+    """Regression for when the MCP transport delivers `body`
     already parsed as a dict, the wrapper must accept it (rather than
     failing pydantic string validation) and forward it as-is."""
     monkeypatch.setattr(server, "RedmineClient", _FakeClient)
