@@ -183,7 +183,7 @@ Refs: serverops #2582, claudecode #2583.
   `redmine_create_issue` was failing with a generic `redmine_api_404`
   because the slug lookup raised, the listing fallback never ran, and
   there was no clue that "name vs slug" was the real problem
-  ([#2568](https://trouble.simmons.systems/issues/2568)).
+  (#2568).
   - `_resolve_project_id` now falls through slug → cache-by-name →
     refreshed `/projects.json` listing-by-name before giving up.
     Successful name resolutions warm the cache so subsequent calls are
@@ -214,7 +214,7 @@ Refs: serverops #2582, claudecode #2583.
 
 ### Added
 - v0.5 first feature: news + forum-board read tools (Redmine
-  [#2390](https://trouble.simmons.systems/issues/2390)) — 2 new tools.
+  #2390) — 2 new tools.
   40 of the planned set live total.
   - `tools/news.py` — `list_news(project=None, limit, offset)`. Empty
     `project` hits `/news.json` (the global feed); a numeric id or slug
@@ -236,7 +236,7 @@ Refs: serverops #2582, claudecode #2583.
   total; ruff clean.
 
 - v0.3 first feature: `redmine_request` generic-passthrough escape hatch
-  (Redmine [#2384](https://trouble.simmons.systems/issues/2384)) — 1 new
+  (Redmine #2384) — 1 new
   tool, opt-in. 38 of the planned set live total.
   - `tools/passthrough.py` — sends arbitrary HTTP requests to any
     Redmine REST endpoint with NO validation, NO workflow check, and
@@ -258,7 +258,7 @@ Refs: serverops #2582, claudecode #2583.
   universal `validation_skipped` flag, and error-envelope round-trip.
 - 3 new tests in `tests/test_config.py` for the new env var (default
   false, truthy / falsey value parsing). 267 tests pass total; ruff clean.
-- Live smoke verified end-to-end against `trouble.simmons.systems`:
+- Live smoke verified end-to-end:
   read-only GET (with and without query params), POST → PUT → DELETE
   round-trip on a transient passthrough-only ticket (#2440), error
   envelopes for `OPTIONS` / missing-leading-slash / 404, plus gate-off
@@ -266,7 +266,7 @@ Refs: serverops #2582, claudecode #2583.
 
 ### Added (continued)
 - v0.2 seventh feature: versions / milestones CRUD (Redmine
-  [#2382](https://trouble.simmons.systems/issues/2382)) — 6 new tools:
+  #2382) — 6 new tools:
   `list_versions`, `get_version`, `create_version`, `update_version`,
   `delete_version`, `assign_issue_to_version`. 37 of the planned set
   live total.
@@ -289,7 +289,7 @@ Refs: serverops #2582, claudecode #2583.
   every tool's happy + validation + 404 paths, 2 in test_issues.py
   for the new `fixed_version_id` round-trip). 252 tests pass total;
   ruff clean.
-- Live smoke verified end-to-end against `trouble.simmons.systems`:
+- Live smoke verified end-to-end:
   full create → get → list → assign-issue → unassign → update → delete
   cycle on a transient `v02-smoke-*` version in the `claudecode` project
   (assignment must precede the open→locked status flip — locked
@@ -297,7 +297,7 @@ Refs: serverops #2582, claudecode #2583.
 
 ### Added (continued)
 - v0.2 sixth feature: bulk operations (Redmine
-  [#2381](https://trouble.simmons.systems/issues/2381)) — 2 new tools:
+  #2381) — 2 new tools:
   `bulk_update_issues`, `bulk_close`. 31 of the planned set live total.
   - `tools/bulk.py` — thin orchestrators over
     `issues.update_issue` / `issues.close_issue` that validate input
@@ -313,13 +313,13 @@ Refs: serverops #2582, claudecode #2583.
 - 13 new unit tests in `tests/test_tools/test_bulk.py` covering
   validation, success aggregation, mixed-failure aggregation,
   `stop_on_error` short-circuit, and batch-size cap. 226 tests pass total.
-- Live smoke verified against `trouble.simmons.systems`: a single-element
+- Live smoke verified: a single-element
   `bulk_update_issues` posted a journal entry on test issue #2411,
   and `bulk_close([])` returned `validation_failed` as expected.
 
 ### Added (continued)
 - v0.2 fifth feature: issue relations (Redmine
-  [#2380](https://trouble.simmons.systems/issues/2380)) — 4 new tools:
+  #2380) — 4 new tools:
   `list_relations`, `add_relation`, `remove_relation`,
   `set_parent_issue`. 29 of the planned set live total.
   - `tools/relations.py` — `list_relations` GETs
@@ -345,13 +345,13 @@ Refs: serverops #2582, claudecode #2583.
 - 15 new unit tests in `tests/test_tools/test_relations.py` covering
   list / add (with type normalization + delay) / remove / set_parent
   + cross-project 422 propagation. 213 tests pass total.
-- Live smoke verified against `trouble.simmons.systems`: added a
+- Live smoke verified: added a
   `related_to` relation between test issue #2411 and #2412, listed
   it, then removed it.
 
 ### Added (continued)
 - v0.2 fourth feature: wiki page CRUD (Redmine
-  [#2378](https://trouble.simmons.systems/issues/2378)) — 4 new tools:
+  #2378) — 4 new tools:
   `get_page`, `create_page`, `update_page`, `delete_page`. 25 of the
   planned set live total.
   - `tools/wiki.py` — Redmine's wiki API uses PUT for both
@@ -375,13 +375,13 @@ Refs: serverops #2582, claudecode #2583.
   tool's happy path + 404 propagation + URL encoding + version-aware
   fetch + already-exists rejection + empty-text validation. 198
   tests pass total.
-- Live smoke verified against `trouble.simmons.systems`: full
+- Live smoke verified: full
   create → get → re-create-rejected → update → delete → 404-confirmed
   cycle on a transient page in the `claudecode` project.
 
 ### Added (continued)
 - v0.2 third feature: watchers (Redmine
-  [#2379](https://trouble.simmons.systems/issues/2379)) — 3 new tools:
+  #2379) — 3 new tools:
   `add_watcher`, `remove_watcher`, `list_watchers`. 21 of the planned
   set live total.
   - `tools/watchers.py` — `add_watcher` POSTs to
@@ -396,12 +396,12 @@ Refs: serverops #2582, claudecode #2583.
 - 7 new unit tests in `tests/test_tools/test_watchers.py` covering
   each tool's happy + 404-propagation paths. 177 tests pass total;
   ruff clean.
-- Live smoke verified end-to-end against `trouble.simmons.systems`:
+- Live smoke verified end-to-end:
   add+list+remove cycle on test issue #2411.
 
 ### Added (continued)
 - v0.2 second feature: time-entry CRUD (Redmine
-  [#2377](https://trouble.simmons.systems/issues/2377)) — 4 new tools:
+  #2377) — 4 new tools:
   `create_time_entry`, `list_time_entries`, `update_time_entry`,
   `delete_time_entry`. 18 of the 14+ tools live total.
   - `tools/time_entries.py` — create accepts ``H:MM`` or decimal hours
@@ -427,7 +427,7 @@ Refs: serverops #2582, claudecode #2583.
   13 in `tests/test_tools/test_time_entries.py` covering each tool's
   happy + validation-failure + propagation paths. 170 tests pass total;
   ruff clean.
-- Live smoke verified end-to-end against `trouble.simmons.systems`:
+- Live smoke verified end-to-end:
   created time entry #1 against test issue #2411 with `H:MM` hours +
   resolved-by-name activity, listed it, rejected an invalid-hours
   update client-side, applied a valid decimal-hours update, then
@@ -435,7 +435,7 @@ Refs: serverops #2582, claudecode #2583.
 
 ### Added (continued)
 - v0.2 first tool: `redmine_download_attachment` (Redmine
-  [#2376](https://trouble.simmons.systems/issues/2376)).
+  #2376).
   - `tools/attachments.py` — `download_attachment` runs Redmine's
     two-step download (GET `/attachments/{id}.json` for metadata, then
     GET `/attachments/download/{id}/{filename}` for the bytes). Validates
@@ -459,7 +459,7 @@ Refs: serverops #2582, claudecode #2583.
   (6 cover `_is_save_path_allowed` directly including symlink-parent
   rejection; 7 cover the tool itself including size-mismatch and
   overwrite semantics). 136 tests pass total.
-- Live smoke verified end-to-end against `trouble.simmons.systems`:
+- Live smoke verified end-to-end:
   downloaded attachment id 8 (the file uploaded during Phase 5 smoke
   to test issue #2411), confirmed bytes match, confirmed the
   no-overwrite and outside-allowlist rejections fire with the right

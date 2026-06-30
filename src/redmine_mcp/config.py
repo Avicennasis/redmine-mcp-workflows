@@ -108,7 +108,7 @@ class Config:
         if not self.api_key:
             raise RuntimeError(
                 "Redmine API key not configured. Set REDMINE_API_KEY env var "
-                "(e.g. in ~/.bash_secrets)."
+                "(see README for configuration)."
             )
         return self.api_key
 
@@ -129,5 +129,5 @@ class Config:
             return {"X-Redmine-API-Key": self.api_key}
         raise RuntimeError(
             "No Redmine credentials configured. Set REDMINE_OAUTH_TOKEN "
-            "(preferred) or REDMINE_API_KEY env var (e.g. in ~/.bash_secrets)."
+            "(preferred) or REDMINE_API_KEY env var (see README for configuration)."
         )

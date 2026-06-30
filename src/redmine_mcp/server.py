@@ -1354,7 +1354,7 @@ async def redmine_bulk_create_issues(
     pacing_seconds: float = 0.05,
     stop_on_error: bool = False,
 ) -> str:
-    """Bulk-create issues with subject idempotency (ClaudeCode#3141).
+    """Bulk-create issues with subject idempotency.
 
     Args:
         issues: list of issue spec dicts (≤ 100 per call). Each spec

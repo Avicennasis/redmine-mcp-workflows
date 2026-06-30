@@ -13,7 +13,7 @@ Most MCP servers for Redmine are thin wrappers around the REST API: an LLM call 
 
 ## What you get
 
-**v0.1 (13 tools) + v0.2 quartet shipped + v0.3 escape hatch + v0.5 news/forums pair — 40 tools total live, 277 tests, ruff clean.**
+**81 tools, 410 tests, ruff clean.** See [docs/tool-catalog.md](docs/tool-catalog.md) for the full list with parameters.
 
 ### Discovery & introspection (4)
 - `redmine_describe_tracker(tracker)` — required fields, allowed status transitions per role, custom field schemas. Cache-backed.
@@ -145,7 +145,7 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `REDMINE_URL` | `http://127.0.0.1:8281` | Redmine base URL. The default loopback is convenient for setups behind a reverse proxy that filters `X-Redmine-API-Key`. |
-| `REDMINE_API_KEY` | _(none)_ | API key (set in `~/.bash_secrets`). |
+| `REDMINE_API_KEY` | _(none)_ | API key. |
 | `REDMINE_OAUTH_TOKEN` | _(none)_ | OAuth2 bearer token (Doorkeeper, Redmine 6.1+). When set, sent as `Authorization: Bearer <token>` and **takes precedence over the API key**. |
 | `REDMINE_MCP_READ_ONLY` | `false` | Set `true` to disable write tools. |
 | `REDMINE_MCP_CACHE_DIR` | platform user-cache dir | Override for the SQLite cache location. |
@@ -156,7 +156,7 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 
 ## Text formatting in notes
 
-Redmine renders issue descriptions and journal notes using a text formatter — **Markdown** on most modern instances (including `redmine.simmons.systems`). This means `**bold**`, `## headings`, `| col | col |` tables, and `- list items` all render correctly in note text.
+Redmine renders issue descriptions and journal notes using a text formatter — **Markdown** on most modern instances. This means `**bold**`, `## headings`, `| col | col |` tables, and `- list items` all render correctly in note text.
 
 **Important for MCP callers:** when composing multi-line notes, the `note` parameter must contain actual newline characters in the JSON string value. Do **not** use literal two-character `\n` escape sequences — they get double-escaped and stored as visible `\n` text instead of line breaks. If your notes look like a single paragraph with visible `\n` markers, this is the cause.
 
@@ -198,7 +198,7 @@ Same pattern applies to custom fields (rejects unknown fields and regex/format v
 
 There are several others — most notably [jztan/redmine-mcp-server](https://github.com/jztan/redmine-mcp-server) (55 tools, comprehensive, no validation), [@onozaty/redmine-mcp-server](https://www.npmjs.com/package/@onozaty/redmine-mcp-server) (TypeScript, Zod schemas), [runekaagaard/mcp-redmine](https://github.com/runekaagaard/mcp-redmine) (generic OpenAPI passthrough). All are good projects.
 
-`redmine-mcp-workflows` differs by **validating before sending**, with a smaller, opinionated tool surface that prefers helpful errors over breadth. See [docs/differences.md](docs/differences.md) for a full comparison.
+`redmine-mcp-workflows` differs by **validating before sending** — 81 tools with a schema-aware validation layer that prefers helpful errors over raw API passthrough.
 
 ## License
 

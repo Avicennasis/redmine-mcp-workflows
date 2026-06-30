@@ -5,9 +5,7 @@ Supports two auth shapes:
 * API key — env var ``REDMINE_API_KEY``
 * OAuth2 bearer token (Doorkeeper, Redmine 6.1+) — env var ``REDMINE_OAUTH_TOKEN``
 
-Secrets are expected to be set in the shell environment (e.g. via
-``~/.bash_secrets`` sourced by ``~/.bashrc``). The canonical secret store
-is ``/opt/simsyssecrets/vault.enc.yaml`` (SOPS+age encrypted).
+Secrets are expected to be set in the shell environment.
 """
 
 from __future__ import annotations
