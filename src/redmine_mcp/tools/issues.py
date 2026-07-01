@@ -208,9 +208,7 @@ def _has_custom_field_entry(
     return False
 
 
-def _has_difficulty_entry(
-    custom_fields: list[dict[str, Any]] | None, field_id: int
-) -> bool:
+def _has_difficulty_entry(custom_fields: list[dict[str, Any]] | None, field_id: int) -> bool:
     """True if ``custom_fields`` already carries a Difficulty entry."""
     return _has_custom_field_entry(custom_fields, field_id, DIFFICULTY_FIELD_NAME)
 

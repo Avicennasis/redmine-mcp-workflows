@@ -13,6 +13,7 @@ graph is therefore learned reactively — see ``workflow.py`` and
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from ..cache.schema_db import SchemaCache
@@ -21,21 +22,26 @@ from ..client import RedmineClient
 
 async def refresh_global_enumerations(client: RedmineClient, cache: SchemaCache) -> None:
     """Populate ``cache_meta`` with the latest global lookups."""
-    statuses = await client.get("/issue_statuses.json")
+    # ⚡ Bolt: Fetch global enumerations concurrently to significantly reduce API latency
+    # Previous implementation fetched these sequentially, incurring 4x network round-trips.
+    statuses, priorities, roles, activities = await asyncio.gather(
+        client.get("/issue_statuses.json"),
+        client.get("/enumerations/issue_priorities.json"),
+        client.get("/roles.json"),
+        client.get("/enumerations/time_entry_activities.json"),
+    )
+
     cache.put_meta_json(
         "issue_statuses", statuses.get("issue_statuses", []) if isinstance(statuses, dict) else []
     )
 
-    priorities = await client.get("/enumerations/issue_priorities.json")
     cache.put_meta_json(
         "issue_priorities",
         priorities.get("issue_priorities", []) if isinstance(priorities, dict) else [],
     )
 
-    roles = await client.get("/roles.json")
     cache.put_meta_json("roles", roles.get("roles", []) if isinstance(roles, dict) else [])
 
-    activities = await client.get("/enumerations/time_entry_activities.json")
     cache.put_meta_json(
         "time_entry_activities",
         activities.get("time_entry_activities", []) if isinstance(activities, dict) else [],
