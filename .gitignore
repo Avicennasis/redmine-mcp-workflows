@@ -30,3 +30,6 @@ htmlcov/
 
 # vcrpy cassettes are checked in; only local test artifacts are ignored
 .pytest_history
+
+# Feature Factory / stargazer context (local-only)
+.stargazer-*
