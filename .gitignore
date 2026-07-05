@@ -33,3 +33,4 @@ htmlcov/
 
 # Feature Factory / stargazer context (local-only)
 .stargazer-*
+.stargazer-context.json
