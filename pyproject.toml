@@ -36,7 +36,12 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=6.0.0",
     "vcrpy>=6.0.0",
-    "ruff>=0.5.0",
+    # Pinned, not a floor. The lint job used to `pip install ruff` unpinned
+    # while this extra said >= and pre-commit pinned something else again, so
+    # three gates ran three different linters. A ruff release that adds default
+    # rules then reddens the repo on a day nobody touched it. Keep this EXACTLY
+    # in step with the ruff-pre-commit rev in .pre-commit-config.yaml.
+    "ruff==0.16.0",
 ]
 
 [project.scripts]
