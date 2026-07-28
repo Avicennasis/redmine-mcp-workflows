@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- ruff is now **pinned** rather than floating. Four gates disagreed: the lint job
+  ran `pip install ruff` (unpinned), the `dev` extra said `ruff>=0.5.0`,
+  pre-commit pinned `v0.15.11`, and `uv.lock` held `0.15.15`. A ruff release that
+  adds default rules then reddens the repo on a day nobody touched it. All four
+  are now `0.16.0`, and the lint job installs `-e '.[dev]'` so the extra is the
+  single source of truth.
+
 ## [0.7.0] — 2026-06-02
 
 ### Added
