@@ -29,7 +29,7 @@ Every write validates against the schema cache — status transitions, custom fi
 | `redmine_update_issue` | Update an issue, with reactive workflow validation on status changes. Supports `difficulty`, `held`/`held_until`. |
 | `redmine_close_issue` | Move an issue to its first `is_closed` status. Checks the held gate before closing. |
 | `redmine_delete_issue` | Permanently delete an issue. Cannot be undone. |
-| `redmine_search_issues` | Search/list issues with optional filters, pagination, and saved query support. |
+| `redmine_search_issues` | Search/list issues with optional filters, pagination, and saved query support. Filter on custom fields via `custom_fields` (keys may be numeric ids or field names) and order with `sort` (accepts `cf_<id>:desc`). |
 
 ## Bulk Operations (3)
 

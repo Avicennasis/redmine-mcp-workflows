@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Custom-field filtering and sorting in `redmine_search_issues`.** The tool
+  built its query params from a fixed whitelist (subject, project, status,
+  query_id, limit, offset), so filtering on a custom field was not expressible
+  and callers were pushed toward `redmine_request` — the passthrough escape
+  hatch, which skips the schema cache and workflow validation that are the
+  point of this server. `custom_fields` now accepts a mapping of field -> value
+  (keys may be numeric ids or field names, resolved through the schema cache)
+  and emits Redmine's `cf_<id>=<value>`; `sort` is forwarded verbatim and
+  accepts `cf_<id>:desc`.
+
+  An unresolvable field name is a hard `custom_field_not_found` error and the
+  request is never sent. Redmine **ignores** filter params it does not
+  recognise rather than rejecting them, so a silently dropped `cf_*` would
+  return every issue in scope and look exactly like a successful query that
+  matched a lot — the worst kind of wrong answer. Note `/custom_fields.json` is
+  admin-only, so name resolution can legitimately fail for a non-admin caller;
+  numeric ids always work.
+
 ### Changed
 - ruff is now **pinned** rather than floating. Four gates disagreed: the lint job
   ran `pip install ruff` (unpinned), the `dev` extra said `ruff>=0.5.0`,

@@ -1277,3 +1277,71 @@ async def test_search_issues_caps_limit_at_100(cache: SchemaCache) -> None:
     await issues.search_issues(client, cache, limit=500)
     sent = client.calls[-1][2]
     assert sent["limit"] == 100
+
+
+# ---- custom-field filtering + sort ----------------------------------------
+
+
+def _seed_github_org_field(cache: SchemaCache) -> None:
+    """Seed the 'Github Org' custom field (id 4) used by the filter tests."""
+    cache.put_custom_field(
+        field_id=4,
+        name="Github Org",
+        format_kind="string",
+        is_required=False,
+        default_value=None,
+        possible_values=[],
+        applicable_tracker_ids=[],
+        for_all_projects=True,
+    )
+
+
+async def test_search_issues_emits_cf_param_for_numeric_id(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, custom_fields={"4": "wgtunnel"})
+    sent = client.calls[-1][2]
+    assert sent["cf_4"] == "wgtunnel"
+
+
+async def test_search_issues_accepts_int_custom_field_key(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, custom_fields={4: "wgtunnel"})
+    sent = client.calls[-1][2]
+    assert sent["cf_4"] == "wgtunnel"
+
+
+async def test_search_issues_resolves_custom_field_name_to_id(cache: SchemaCache) -> None:
+    _seed_github_org_field(cache)
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, custom_fields={"Github Org": "wgtunnel"})
+    sent = client.calls[-1][2]
+    assert sent["cf_4"] == "wgtunnel"
+
+
+async def test_search_issues_unresolvable_custom_field_does_not_query(cache: SchemaCache) -> None:
+    """An unknown field must ERROR, not silently drop the filter.
+
+    Redmine ignores filter params it does not recognise, so a dropped ``cf_*``
+    would return every issue in scope and read like a successful match. The
+    load-bearing assertion is the second one: /issues.json is never called.
+    """
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, custom_fields={"No Such Field": "x"})
+    assert result["error"] == "custom_field_not_found"
+    assert not any(call[1] == "/issues.json" for call in client.calls)
+
+
+async def test_search_issues_forwards_sort(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, sort="cf_5:desc")
+    sent = client.calls[-1][2]
+    assert sent["sort"] == "cf_5:desc"
+
+
+async def test_search_issues_omits_cf_and_sort_when_unset(cache: SchemaCache) -> None:
+    """Negative control: absent args must add no params at all."""
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, query="bug")
+    sent = client.calls[-1][2]
+    assert "sort" not in sent
+    assert not any(key.startswith("cf_") for key in sent)
