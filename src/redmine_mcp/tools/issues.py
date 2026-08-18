@@ -33,6 +33,7 @@ from ..errors import (
     StructuredError,
     WorkflowTransitionDisallowed,
 )
+from ..schema import custom_fields as custom_fields_schema
 from ..schema import project as project_schema
 from ..schema import tracker as tracker_schema
 from ..schema import workflow as workflow_module
@@ -802,6 +803,37 @@ async def delete_issue(
     }
 
 
+async def _resolve_custom_field_id(
+    client: RedmineClient,
+    cache: SchemaCache,
+    ident: int | str,
+) -> int | None:
+    """Resolve a custom-field reference (numeric id or field name) to its id.
+
+    Mirrors :func:`_resolve_enum_id`: ints and int-like strings pass straight
+    through, names go through the schema cache and refresh on a miss.
+
+    Returns ``None`` when a name cannot be resolved. ``/custom_fields.json`` is
+    admin-only, so a non-admin caller lands here too. Callers must treat that
+    as an error rather than quietly dropping the filter: Redmine IGNORES filter
+    params it does not recognise instead of rejecting them, so a dropped
+    ``cf_*`` returns every issue in scope and reads exactly like a successful
+    query that happened to match a lot.
+    """
+    if isinstance(ident, int):
+        return ident
+    as_int = _try_int(ident)
+    if as_int is not None:
+        return as_int
+    with contextlib.suppress(Exception):
+        field = await custom_fields_schema.get_custom_field_by_name(client, cache, str(ident))
+        if field is not None:
+            field_id = field.get("id")
+            if field_id is not None:
+                return int(field_id)
+    return None
+
+
 async def search_issues(
     client: RedmineClient,
     cache: SchemaCache,
@@ -810,6 +842,8 @@ async def search_issues(
     project: int | str | None = None,
     status: int | str | None = None,
     query_id: int | None = None,
+    custom_fields: dict[str, Any] | None = None,
+    sort: str | None = None,
     limit: int = 25,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -818,6 +852,16 @@ async def search_issues(
     ``query_id`` invokes a Redmine *saved query* by its numeric id; Redmine
     merges saved-query filters with any explicit URL params (project,
     status, etc.) layered on the request.
+
+    ``custom_fields`` maps a custom-field reference to the value to filter on,
+    emitted as Redmine's ``cf_<id>=<value>``. Keys may be numeric ids or field
+    names (``{"Github Org": "wgtunnel"}``); names resolve through the schema
+    cache. An unresolvable key is a hard error, not a dropped filter -- see
+    :func:`_resolve_custom_field_id`.
+
+    ``sort`` is forwarded verbatim to Redmine, which accepts
+    ``field[:desc]`` and comma-separated lists, including custom fields as
+    ``cf_<id>`` (e.g. ``"cf_5:desc"``).
     """
     params: dict[str, Any] = {"limit": min(limit, 100), "offset": offset}
     if query_id is not None:
@@ -849,6 +893,23 @@ async def search_issues(
                     "status": status,
                 }
             params["status_id"] = status_id
+
+    if custom_fields:
+        for ident, value in custom_fields.items():
+            field_id = await _resolve_custom_field_id(client, cache, ident)
+            if field_id is None:
+                return {
+                    "error": "custom_field_not_found",
+                    "hint": (
+                        f"No custom field matches {ident!r}. Numeric ids are used as-is; "
+                        "names resolve via /custom_fields.json, which is admin-only. "
+                        "Use redmine_list_custom_fields to see what is visible."
+                    ),
+                    "custom_field": ident,
+                }
+            params[f"cf_{field_id}"] = value
+    if sort:
+        params["sort"] = sort
 
     payload = await client.get("/issues.json", params=params)
     issues = payload.get("issues", []) if isinstance(payload, dict) else []

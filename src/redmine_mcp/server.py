@@ -154,6 +154,46 @@ def _normalize_custom_fields(
     return (parsed or None, None)
 
 
+def _normalize_cf_filters(
+    value: dict | str,
+) -> tuple[dict | None, dict | None]:
+    """Accept a custom-field FILTER map as either a dict or a JSON string.
+
+    Sibling of :func:`_normalize_custom_fields`, which handles the *list*
+    shape used to WRITE custom-field values on create/update. Filtering is a
+    mapping of field -> value to match, so it gets its own normalizer rather
+    than overloading a helper whose contract is a list.
+
+    Returns ``(normalized, error)`` on the same convention as its sibling.
+    """
+    if isinstance(value, dict):
+        return (value or None, None)
+    if not value:
+        return (None, None)
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as e:
+        return (
+            None,
+            {
+                "error": "custom_fields_invalid_json",
+                "hint": f"custom_fields must be a mapping or a JSON-encoded object: {e}",
+            },
+        )
+    if not isinstance(parsed, dict):
+        return (
+            None,
+            {
+                "error": "custom_fields_invalid_shape",
+                "hint": (
+                    "custom_fields must decode to a JSON object mapping field -> value, "
+                    f"not {type(parsed).__name__}."
+                ),
+            },
+        )
+    return (parsed or None, None)
+
+
 async def _wrap(coro_factory, *, write: bool = False):
     """Helper to wrap a tool coroutine factory and convert API errors to JSON.
 
@@ -729,6 +769,8 @@ async def redmine_search_issues(
     project: str = "",
     status: str = "",
     query_id: int = 0,
+    custom_fields: dict | str = "",
+    sort: str = "",
     limit: int = 25,
     offset: int = 0,
 ) -> str:
@@ -746,6 +788,17 @@ async def redmine_search_issues(
             invokes the saved query and merges any other filters (status,
             project, etc.) on top per Redmine's standard semantics.
             ``0`` (default) means no saved query.
+        custom_fields: optional mapping of custom field -> value to filter on,
+            sent as Redmine's ``cf_<id>=<value>``. Keys may be numeric ids or
+            field names (``{"Github Org": "wgtunnel"}``); names resolve through
+            the schema cache. Accepts a dict or a JSON-encoded object. An
+            unresolvable key returns ``custom_field_not_found`` rather than
+            silently dropping the filter — Redmine ignores unknown filter
+            params, so a dropped one would return everything in scope and look
+            like a successful match.
+        sort: optional Redmine sort spec, forwarded verbatim. Accepts
+            ``field[:desc]`` and comma-separated lists, including custom fields
+            as ``cf_<id>`` (e.g. ``"cf_5:desc"``).
         limit: page size (capped at 100).
         offset: skip the first N results.
 
@@ -755,6 +808,10 @@ async def redmine_search_issues(
     proj: int | str | None = project if project else None
     st: int | str | None = status if status else None
     qid: int | None = query_id if query_id else None
+    cf, cf_err = _normalize_cf_filters(custom_fields)
+    if cf_err is not None:
+        return _dump(cf_err)
+    srt: str | None = sort if sort else None
 
     async def factory(client, cache):
         return await issues.search_issues(
@@ -764,6 +821,8 @@ async def redmine_search_issues(
             project=proj,
             status=st,
             query_id=qid,
+            custom_fields=cf,
+            sort=srt,
             limit=limit,
             offset=offset,
         )
