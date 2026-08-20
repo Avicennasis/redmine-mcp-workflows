@@ -112,6 +112,28 @@ class Config:
             )
         return self.api_key
 
+    def require_credential(self) -> str:
+        """Return whichever raw credential is present, for fingerprinting.
+
+        Resolution order matches :meth:`require_auth_headers` exactly:
+          1. ``oauth_token`` (bearer wins when both are configured, because
+             that is the credential the HTTP client actually sends)
+          2. ``api_key``
+          3. neither        -> ``RuntimeError``
+
+        The returned string is a *fingerprint input*, never a header value;
+        callers hash it (see ``SchemaCache.reconcile_auth``) so that cached
+        schema is never shared across two identities.
+        """
+        if self.oauth_token:
+            return self.oauth_token
+        if self.api_key:
+            return self.api_key
+        raise RuntimeError(
+            "No Redmine credentials configured. Set REDMINE_OAUTH_TOKEN "
+            "(preferred) or REDMINE_API_KEY env var (see README for configuration)."
+        )
+
     def require_auth_headers(self) -> dict[str, str]:
         """Return the auth headers, preferring OAuth bearer when set.
 

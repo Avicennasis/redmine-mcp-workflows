@@ -102,12 +102,16 @@ def _get_cache() -> SchemaCache:
     global _cache
     if _cache is None:
         cfg = _get_config()
-        api_key = cfg.require_api_key()
+        # Fingerprint whichever credential is actually in use. Requiring the
+        # API key unconditionally broke OAuth-only deployments (only
+        # REDMINE_OAUTH_TOKEN set): every tool died on its first call with
+        # "Redmine API key not configured" before reaching the API.
+        credential = cfg.require_credential()
         _cache = SchemaCache(
             db_path=cfg.cache_dir / "schema.db",
             ttl_seconds=cfg.cache_ttl_seconds,
         )
-        _cache.reconcile_auth(api_key)
+        _cache.reconcile_auth(credential)
         atexit.register(_cache.close)
     return _cache
 
