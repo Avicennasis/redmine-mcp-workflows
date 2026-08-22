@@ -41,7 +41,7 @@ dev = [
     # three gates ran three different linters. A ruff release that adds default
     # rules then reddens the repo on a day nobody touched it. Keep this EXACTLY
     # in step with the ruff-pre-commit rev in .pre-commit-config.yaml.
-    "ruff==0.16.3",
+    "ruff==0.16.4",
 ]
 
 [project.scripts]
