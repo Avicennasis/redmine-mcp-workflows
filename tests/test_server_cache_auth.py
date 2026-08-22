@@ -15,16 +15,19 @@ SQLite ``cache_meta`` table to prove which credential it was derived from.
 
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from redmine_mcp import server
+from redmine_mcp.cache.schema_db import _AUTH_FINGERPRINT_KEY, _fingerprint
 from redmine_mcp.config import Config
 
-_FP_KEY = "auth_fingerprint_sha256"
+# Import the real key and hash rather than restating them. A hand-mirrored
+# copy silently went stale when the fingerprint moved from SHA-256 to PBKDF2,
+# breaking four tests that were describing the implementation, not its contract.
+_FP_KEY = _AUTH_FINGERPRINT_KEY
 
 
 @pytest.fixture(autouse=True)
@@ -43,8 +46,8 @@ def reset_server_globals():
 
 
 def _fingerprint_of(secret: str) -> str:
-    """Mirror SchemaCache._fingerprint — sha256 hex of the credential."""
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+    """Delegate to the real implementation — never re-derive it here."""
+    return _fingerprint(secret)
 
 
 def _persisted_fingerprint(cache: server.SchemaCache) -> str:

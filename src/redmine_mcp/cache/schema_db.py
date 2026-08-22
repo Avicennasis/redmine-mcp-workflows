@@ -22,11 +22,39 @@ from typing import Any
 
 from .migrations import apply_migrations
 
-_AUTH_FINGERPRINT_KEY = "auth_fingerprint_sha256"
+# Renamed from ``auth_fingerprint_sha256`` deliberately: an old row written by
+# the previous bare-SHA-256 scheme must not be compared against a PBKDF2 digest.
+# With a new key the old row is simply absent, reconcile_auth takes its
+# first-call branch, and the stale value is dropped on the next full wipe.
+_AUTH_FINGERPRINT_KEY = "auth_fingerprint_pbkdf2"
+
+# Domain-separation salt. NOT a secret and not required to be one: this value
+# is compared for equality only and never verifies a user-supplied password.
+# The offline-guessing resistance comes from the iteration count below plus the
+# credential's own entropy.
+_FINGERPRINT_SALT = b"redmine-mcp/auth-fingerprint/v1"
+
+# OWASP's current floor for PBKDF2-HMAC-SHA256. reconcile_auth runs once per
+# process (``server._get_cache()`` memoises the cache), so this is a one-time
+# cost of a few milliseconds at first use, not a per-request cost.
+_FINGERPRINT_ITERATIONS = 210_000
 
 
 def _fingerprint(api_key: str) -> str:
-    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    """Return a slow-hash fingerprint of a credential.
+
+    Used only to detect that the credential changed so the cache can be
+    wiped — never to authenticate anyone. A bare digest was reported as
+    ``py/weak-sensitive-data-hashing``: cheap to brute-force offline if the
+    SQLite cache file leaks. PBKDF2 makes that guessing expensive while
+    keeping the value deterministic, which is all the equality check needs.
+    """
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        api_key.encode("utf-8"),
+        _FINGERPRINT_SALT,
+        _FINGERPRINT_ITERATIONS,
+    ).hex()
 
 
 class SchemaCache:

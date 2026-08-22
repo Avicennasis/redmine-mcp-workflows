@@ -392,3 +392,29 @@ def test_invalidate_all_clears_custom_fields(cache: SchemaCache) -> None:
     )
     cache.invalidate("all")
     assert cache.get_custom_field(1) is None
+
+
+def test_fingerprint_is_not_a_bare_digest() -> None:
+    """The credential fingerprint must use a computationally expensive KDF.
+
+    A bare SHA-256 is cheap to brute-force offline should the cache DB leak
+    (CodeQL alert #42, ``py/weak-sensitive-data-hashing``). The stored value
+    is only ever compared for equality, so the KDF is free to change; what
+    must not hold is that it equals a plain digest of the credential.
+    """
+    import hashlib
+
+    from redmine_mcp.cache.schema_db import _fingerprint
+
+    credential = "api-key-under-test"
+    # negative control: exactly what the previous implementation produced
+    bare = hashlib.sha256(credential.encode("utf-8")).hexdigest()
+    assert _fingerprint(credential) != bare
+
+
+def test_fingerprint_is_deterministic_and_distinguishing() -> None:
+    """Equality comparison is the whole job, so it must keep working."""
+    from redmine_mcp.cache.schema_db import _fingerprint
+
+    assert _fingerprint("same") == _fingerprint("same")
+    assert _fingerprint("one") != _fingerprint("two")
