@@ -124,9 +124,7 @@ async def test_create_omitted_visibility_not_sent() -> None:
     """Create had the same non-sentinel defaults. Harmless at creation
     (the forced values matched Redmine's own defaults) but fixed for the
     contract — omitted means the key is absent from the POST body."""
-    result = json.loads(
-        await server.redmine_create_project(name="Test", identifier="test")
-    )
+    result = json.loads(await server.redmine_create_project(name="Test", identifier="test"))
     assert "error" not in result, result
     body = _post_payload()
     assert "is_public" not in body
