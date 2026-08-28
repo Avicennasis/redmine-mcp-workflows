@@ -312,9 +312,9 @@ async def redmine_create_project(
     identifier: str,
     description: str = "",
     homepage: str = "",
-    is_public: bool = True,
+    is_public: bool | None = None,
     parent_id: int = 0,
-    inherit_members: bool = False,
+    inherit_members: bool | None = None,
     tracker_ids: list | str = "",
     enabled_module_names: list | str = "",
 ) -> str:
@@ -325,9 +325,11 @@ async def redmine_create_project(
         identifier: required URL slug (lowercase, hyphens, no spaces).
         description: optional project description.
         homepage: optional homepage URL.
-        is_public: whether the project is publicly visible (default True).
+        is_public: whether the project is publicly visible. ``None``
+            (omitted) uses the Redmine default (public).
         parent_id: optional parent project id (``0`` for top-level).
-        inherit_members: if True, inherit members from parent.
+        inherit_members: if True, inherit members from parent. ``None``
+            (omitted) uses the Redmine default (no inheritance).
         tracker_ids: optional list of tracker ids to enable.
         enabled_module_names: optional list of modules (e.g.
             ``["issue_tracking", "wiki", "boards"]``).
@@ -368,9 +370,9 @@ async def redmine_update_project(
     name: str = "",
     description: str = "",
     homepage: str = "",
-    is_public: bool = True,
+    is_public: bool | None = None,
     parent_id: int = 0,
-    inherit_members: bool = False,
+    inherit_members: bool | None = None,
     tracker_ids: list | str = "",
     enabled_module_names: list | str = "",
 ) -> str:
@@ -381,9 +383,12 @@ async def redmine_update_project(
         name: optional new display name.
         description: optional new description.
         homepage: optional new homepage URL.
-        is_public: project visibility.
+        is_public: project visibility. ``None`` (omitted) leaves the
+            current value unchanged — omitting never publishes a private
+            project.
         parent_id: new parent project id (``0`` for unchanged).
         inherit_members: whether to inherit members from parent.
+            ``None`` (omitted) leaves the current value unchanged.
         tracker_ids: optional list of tracker ids to enable.
         enabled_module_names: optional list of modules.
 
