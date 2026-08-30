@@ -964,7 +964,9 @@ async def search_issues(
     if tracker is not None:
         # Comma-separated lists are a first-class /issues.json filter, so resolve
         # each element independently and rejoin. Names and ids may be mixed.
-        idents = [t.strip() for t in str(tracker).split(",")] if isinstance(tracker, str) else [tracker]
+        idents = (
+            [t.strip() for t in str(tracker).split(",")] if isinstance(tracker, str) else [tracker]
+        )
         resolved: list[str] = []
         for ident in idents:
             if ident == "":

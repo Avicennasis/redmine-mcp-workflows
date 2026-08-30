@@ -1425,6 +1425,8 @@ async def test_apply_held_does_not_truncate_a_long_reason(cache: SchemaCache) ->
     out = await issues._apply_held(FakeClient({}), cache, None, reason, None)
     assert out is not None
     assert len(next(e for e in out if e["id"] == 2)["value"]) == 500
+
+
 # search_issues: tracker filter and query_id/custom_fields conflict (#50738)
 #
 # All four parallel /work-tickets sessions on 2026-08-30 needed "the N oldest
@@ -1484,9 +1486,7 @@ async def test_search_issues_refuses_query_id_together_with_custom_fields(
     # Measured on this fleet: query_id=12 plus {"Held": "!*"} returned every
     # Held ticket the caller had just excluded. Refuse rather than answer wrongly.
     client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
-    result = await issues.search_issues(
-        client, cache, query_id=12, custom_fields={"Held": "!*"}
-    )
+    result = await issues.search_issues(client, cache, query_id=12, custom_fields={"Held": "!*"})
     assert result["error"] == "query_id_conflicts_with_custom_fields"
     assert result["query_id"] == 12
     assert result["custom_fields"] == ["Held"]
@@ -1545,9 +1545,7 @@ async def test_same_difficulty_query_with_tracker_bug_constrains_the_request(
         "total_count": 2,
     }
     client = FakeClient({("GET", "/issues.json"): only_bugs})
-    result = await issues.search_issues(
-        client, cache, tracker="Bug", custom_fields={"1": "Hard"}
-    )
+    result = await issues.search_issues(client, cache, tracker="Bug", custom_fields={"1": "Hard"})
     sent = client.calls[-1][2]
     assert sent["tracker_id"] == "1"
     assert sent["cf_1"] == "Hard"
