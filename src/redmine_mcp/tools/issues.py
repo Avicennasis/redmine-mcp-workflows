@@ -885,17 +885,29 @@ async def search_issues(
     *,
     project: int | str | None = None,
     status: int | str | None = None,
+    tracker: int | str | None = None,
     query_id: int | None = None,
     custom_fields: dict[str, Any] | None = None,
     sort: str | None = None,
     limit: int = 25,
     offset: int = 0,
 ) -> dict[str, Any]:
-    """Search/list issues with optional substring + project/status filters.
+    """Search/list issues with optional substring + project/status/tracker filters.
 
-    ``query_id`` invokes a Redmine *saved query* by its numeric id; Redmine
-    merges saved-query filters with any explicit URL params (project,
-    status, etc.) layered on the request.
+    ``query_id`` invokes a Redmine *saved query* by its numeric id. It does
+    NOT reliably merge with caller-supplied filters: a saved query's own
+    filters win, and ``custom_fields`` in particular is silently dropped --
+    measured on this fleet as ``query_id=12`` plus ``{"Held": "!*"}``
+    returning every Held ticket the caller had just excluded. Combining the
+    two is therefore refused outright rather than answered wrongly, on the
+    same reasoning as ``custom_field_not_found``: a filter that does not
+    reach the API returns everything in scope and is indistinguishable from
+    a broad match.
+
+    ``tracker`` accepts a numeric id, a tracker name (``"Bug"``), or a
+    comma-separated list of either (``"Bug,Feature"``), resolved through the
+    schema cache and emitted as Redmine's ``tracker_id``. An unresolvable
+    name is a hard error, never a dropped filter.
 
     ``custom_fields`` maps a custom-field reference to the value to filter on,
     emitted as Redmine's ``cf_<id>=<value>``. Keys may be numeric ids or field
@@ -909,6 +921,17 @@ async def search_issues(
     """
     params: dict[str, Any] = {"limit": min(limit, 100), "offset": offset}
     if query_id is not None:
+        if custom_fields:
+            return {
+                "error": "query_id_conflicts_with_custom_fields",
+                "hint": (
+                    "A saved query's own filters win and custom_fields is dropped "
+                    "silently, so the result would ignore your filter without saying "
+                    "so. Use either query_id alone, or custom_fields without query_id."
+                ),
+                "query_id": query_id,
+                "custom_fields": sorted(str(k) for k in custom_fields),
+            }
         params["query_id"] = query_id
     if query:
         # ~ prefix asks Redmine for substring match on the field.
@@ -937,6 +960,28 @@ async def search_issues(
                     "status": status,
                 }
             params["status_id"] = status_id
+
+    if tracker is not None:
+        # Comma-separated lists are a first-class /issues.json filter, so resolve
+        # each element independently and rejoin. Names and ids may be mixed.
+        idents = [t.strip() for t in str(tracker).split(",")] if isinstance(tracker, str) else [tracker]
+        resolved: list[str] = []
+        for ident in idents:
+            if ident == "":
+                continue
+            tracker_id = await _resolve_tracker_id(client, cache, ident)
+            if tracker_id is None:
+                return {
+                    "error": "tracker_not_found",
+                    "hint": (
+                        f"No tracker matches {ident!r}. Use redmine_list_trackers to see "
+                        "the configured trackers. Numeric ids are used as-is."
+                    ),
+                    "tracker": ident,
+                }
+            resolved.append(str(tracker_id))
+        if resolved:
+            params["tracker_id"] = ",".join(resolved)
 
     if custom_fields:
         for ident, value in custom_fields.items():

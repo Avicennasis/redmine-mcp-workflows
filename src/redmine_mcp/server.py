@@ -800,6 +800,7 @@ async def redmine_search_issues(
     query: str = "",
     project: str = "",
     status: str = "",
+    tracker: str = "",
     query_id: int = 0,
     custom_fields: dict | str = "",
     sort: str = "",
@@ -816,10 +817,18 @@ async def redmine_search_issues(
             (``"open"``, ``"closed"``, ``"*"``). Lower-case tokens are
             passed through; named statuses (e.g. ``"Closed"``) resolve
             via the cache.
-        query_id: optional Redmine *saved query* id (numeric). When set,
-            invokes the saved query and merges any other filters (status,
-            project, etc.) on top per Redmine's standard semantics.
-            ``0`` (default) means no saved query.
+        tracker: optional tracker id or name (``"Bug"``), or a comma-separated
+            list of either (``"Bug,Feature"``). Names resolve through the schema
+            cache and are emitted as Redmine's ``tracker_id``. An unresolvable
+            name returns ``tracker_not_found`` rather than dropping the filter —
+            without this parameter a query for "Bug tickets" is inexpressible and
+            returns Features/NewApps/Prompts mixed in, with nothing in the
+            response saying so.
+        query_id: optional Redmine *saved query* id (numeric). ``0`` (default)
+            means no saved query. It does NOT merge with ``custom_fields`` —
+            the saved query's own filters win and yours are dropped silently —
+            so passing both returns ``query_id_conflicts_with_custom_fields``
+            instead of a quietly unfiltered set.
         custom_fields: optional mapping of custom field -> value to filter on,
             sent as Redmine's ``cf_<id>=<value>``. Keys may be numeric ids or
             field names (``{"Github Org": "wgtunnel"}``); names resolve through
@@ -839,6 +848,7 @@ async def redmine_search_issues(
     q = query if query else None
     proj: int | str | None = project if project else None
     st: int | str | None = status if status else None
+    trk: int | str | None = tracker if tracker else None
     qid: int | None = query_id if query_id else None
     cf, cf_err = _normalize_cf_filters(custom_fields)
     if cf_err is not None:
@@ -852,6 +862,7 @@ async def redmine_search_issues(
             query=q,
             project=proj,
             status=st,
+            tracker=trk,
             query_id=qid,
             custom_fields=cf,
             sort=srt,
