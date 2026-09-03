@@ -87,7 +87,7 @@ async def bulk_update_issues(
     notes: str | None = None,
     custom_fields: list[dict[str, Any]] | None = None,
     difficulty: str | None = None,
-    held: bool | None = None,
+    held: str | bool | None = None,
     held_until: str | None = None,
     due_date: str | None = None,
     start_date: str | None = None,
@@ -103,6 +103,13 @@ async def bulk_update_issues(
     """
     if (err := _check_batch_size(issue_ids)) is not None:
         return err
+
+    # Validate the hold reason ONCE, up front. update_issue would reject each
+    # issue individually, but a bad `held` is the same mistake N times, not N
+    # mistakes — and on a bulk call it would otherwise overwrite every existing
+    # reason in the batch at once.
+    if (held_err := issues_module._validate_held_reason(held)) is not None:
+        return held_err.as_dict()
 
     update_kwargs: dict[str, Any] = {}
     if subject is not None:

@@ -262,6 +262,28 @@ class IssueHeld(StructuredError):
             self.extra["held_until"] = held_until
 
 
+@dataclass
+class HeldReasonRequired(StructuredError):
+    """``held=True`` was passed without a reason string.
+
+    The Held custom field is free text that humans read to decide whether a
+    hold is still valid.  A bare truthy flag used to write the literal ``"1"``,
+    which is indistinguishable from "held for reasons nobody recorded" and
+    silently destroyed any prose already in the field.  Requiring the reason
+    at the call site is what keeps the field answerable.
+    """
+
+    error: str = "held_reason_required"
+
+    def __init__(self) -> None:
+        super().__init__(error="held_reason_required")
+        self.hint = (
+            'Pass held="<why this ticket is held>" instead of held=True. '
+            "The Held field is prose a human reads later; a bare flag records nothing "
+            "and overwrites any existing reason. Use held=False to clear a hold."
+        )
+
+
 __all__ = [
     "StructuredError",
     "RedmineAPIError",
@@ -273,5 +295,6 @@ __all__ = [
     "RoleNotAuthorized",
     "AttachmentPathDenied",
     "TimeEntryHoursInvalid",
+    "HeldReasonRequired",
     "IssueHeld",
 ]
