@@ -1345,3 +1345,83 @@ async def test_search_issues_omits_cf_and_sort_when_unset(cache: SchemaCache) ->
     sent = client.calls[-1][2]
     assert "sort" not in sent
     assert not any(key.startswith("cf_") for key in sent)
+
+
+# ---------------------------------------------------------------------
+# held= now takes a REASON string, not a bare flag.
+#
+# Regression guard for the 2026-09-03 finding: `held=True` wrote the literal
+# "1" into the Held custom field, silently replacing whatever prose was there.
+# The field is what a human reads later to decide whether a hold still applies,
+# so a value that records nothing is worse than no write at all.
+# ---------------------------------------------------------------------
+
+
+def test_validate_held_reason_rejects_bare_true() -> None:
+    err = issues._validate_held_reason(True)
+    assert err is not None
+    assert err.as_dict()["error"] == "held_reason_required"
+
+
+def test_validate_held_reason_rejects_blank_reason() -> None:
+    # A whitespace-only reason is the same failure wearing a string.
+    for blank in ("", "   ", "\t\n"):
+        err = issues._validate_held_reason(blank)
+        assert err is not None, f"blank reason {blank!r} should be rejected"
+        assert err.as_dict()["error"] == "held_reason_required"
+
+
+def test_validate_held_reason_allows_reason_clear_and_unchanged() -> None:
+    # These three are the whole legitimate surface:
+    #   str   -> set this reason
+    #   False -> clear the hold
+    #   None  -> leave unchanged
+    assert issues._validate_held_reason("waiting on upstream patch") is None
+    assert issues._validate_held_reason(False) is None
+    assert issues._validate_held_reason(None) is None
+
+
+def _seed_held_field(cache: SchemaCache, *, field_id: int = 2) -> None:
+    """Pre-populate the cache with the Held custom field record (free text)."""
+    cache.put_custom_field(
+        field_id=field_id,
+        name="Held",
+        format_kind="string",
+        is_required=False,
+        default_value=None,
+        possible_values=[],
+        applicable_tracker_ids=[],
+        for_all_projects=True,
+    )
+
+
+async def test_apply_held_writes_the_reason_string(cache: SchemaCache) -> None:
+    """The reason must reach the custom_fields payload verbatim — not as "1"."""
+    _seed_held_field(cache)
+    reason = "waiting on upstream patch; no ETA"
+    out = await issues._apply_held(FakeClient({}), cache, None, reason, None)
+    assert out is not None
+    entry = next(e for e in out if e["id"] == 2)
+    assert entry["value"] == reason, "the reason must be stored in full"
+    assert entry["value"] != "1"
+
+
+async def test_apply_held_false_clears_the_field(cache: SchemaCache) -> None:
+    _seed_held_field(cache)
+    out = await issues._apply_held(FakeClient({}), cache, None, False, None)
+    assert out is not None
+    assert next(e for e in out if e["id"] == 2)["value"] == ""
+
+
+async def test_apply_held_does_not_truncate_a_long_reason(cache: SchemaCache) -> None:
+    """Redmine stores the Held field in full; nothing in this server may clip it.
+
+    The mangled holds that prompted this work were exactly 80 characters
+    ("...requires careful implementat"), sliced by a caller. Guard the length
+    here so the server can never become the culprit.
+    """
+    _seed_held_field(cache)
+    reason = "x" * 500
+    out = await issues._apply_held(FakeClient({}), cache, None, reason, None)
+    assert out is not None
+    assert len(next(e for e in out if e["id"] == 2)["value"]) == 500

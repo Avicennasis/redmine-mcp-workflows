@@ -161,7 +161,7 @@ async def test_bulk_update_propagates_all_supported_fields(
         notes="batched",
         custom_fields=[{"id": 2, "value": "Org at PR capacity (3/3)"}],
         difficulty="Hard",
-        held=True,
+        held="Org at PR capacity (3/3)",
         held_until="2026-12-01",
         due_date="2026-12-31",
         start_date="2026-06-01",
@@ -175,7 +175,7 @@ async def test_bulk_update_propagates_all_supported_fields(
     assert captured["notes"] == "batched"
     assert captured["custom_fields"] == [{"id": 2, "value": "Org at PR capacity (3/3)"}]
     assert captured["difficulty"] == "Hard"
-    assert captured["held"] is True
+    assert captured["held"] == "Org at PR capacity (3/3)"
     assert captured["held_until"] == "2026-12-01"
     assert captured["due_date"] == "2026-12-31"
     assert captured["start_date"] == "2026-06-01"

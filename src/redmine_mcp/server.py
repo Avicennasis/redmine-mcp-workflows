@@ -534,7 +534,7 @@ async def redmine_create_issue(
     status: str = "",
     assigned_to_id: int = 0,
     difficulty: str = "",
-    held: bool = False,
+    held: str = "",
     held_until: str = "",
     due_date: str = "",
     start_date: str = "",
@@ -559,11 +559,16 @@ async def redmine_create_issue(
             field default-fills with ``"Unclassified"`` so auto-callers
             don't trip the required-field validation. Silently no-ops on
             fleets that don't have a Difficulty field configured.
-        held: optional boolean. ``True`` marks the issue as held (blocks
-            closing). ``False`` (default) leaves the Held field unset.
+        held: optional **reason string** explaining why the issue is held
+            (e.g. ``"waiting on upstream patch"``). A held issue cannot be
+            closed. Empty (default) leaves the Held field unset. This is
+            free text a human reads later to decide whether the hold still
+            applies, so a bare flag is not accepted.
         held_until: optional ISO-8601 date (``"2026-10-01"``). Sets the
-            ``Held Until`` custom field. Empty leaves it unset. Only
-            meaningful when ``held`` is ``True``.
+            ``Held Until`` custom field. **Optional and independent of**
+            ``held`` — many holds have no knowable end date ("until
+            upstream ships a fix"), so a reason with no date is a normal,
+            valid state. Empty leaves it unset.
         due_date: optional ISO-8601 date (``"2026-05-17"``). Empty leaves
             it unset.
         start_date: optional ISO-8601 date. Empty leaves it unset (Redmine
@@ -584,7 +589,7 @@ async def redmine_create_issue(
     st: int | str | None = status if status else None
     assignee = assigned_to_id if assigned_to_id else None
     diff = difficulty if difficulty else None
-    h = held if held else None
+    h: str | bool | None = held if held else None
     hu = held_until if held_until else None
     dd = due_date if due_date else None
     sd = start_date if start_date else None
@@ -626,7 +631,8 @@ async def redmine_update_issue(
     assigned_to_id: int = 0,
     notes: str = "",
     difficulty: str = "",
-    held: bool = False,
+    held: str = "",
+    clear_held: bool = False,
     held_until: str = "",
     due_date: str = "",
     start_date: str = "",
@@ -650,13 +656,20 @@ async def redmine_update_issue(
             ``Difficulty`` custom field. Values: ``"Unclassified"`` /
             ``"Easy"`` / ``"Normal"`` / ``"Hard"``. NO default-fill on
             update — empty means "don't change Difficulty."
-        held: optional boolean. ``True`` marks the issue as held (blocks
-            closing). ``False`` (default) means unchanged. To clear a
-            held flag, pass ``held=True`` is wrong — instead pass
-            ``custom_fields`` with ``{"id": 2, "value": ""}`` directly,
-            or set ``held=False`` won't fire (sentinel is falsy).
+        held: optional **reason string** explaining why the issue is held
+            (e.g. ``"waiting on upstream patch"``), which also blocks
+            closing. Empty (default) means unchanged. This is free text a
+            human reads later to decide whether the hold still applies —
+            a bare flag records nothing, so booleans are rejected with
+            ``held_reason_required``.
+        clear_held: set ``True`` to remove an existing hold. This is the
+            supported way to un-hold an issue; passing an empty ``held``
+            means "don't change" and cannot clear. Mutually exclusive with
+            a non-empty ``held``.
         held_until: optional ISO-8601 date (``"2026-10-01"``). Sets the
             ``Held Until`` custom field. Empty means unchanged.
+            **Optional and independent of** ``held`` — plenty of holds have
+            no knowable end date, so a reason with no date is valid.
         due_date: optional ISO-8601 date (``"2026-05-17"``). Empty leaves
             it unchanged; pass the literal string ``""`` (i.e. just don't
             send this arg) to leave it untouched. To clear an existing
@@ -685,7 +698,17 @@ async def redmine_update_issue(
     assignee = assigned_to_id if assigned_to_id else None
     nt = notes if notes else None
     diff = difficulty if difficulty else None
-    h = held if held else None
+    if held and clear_held:
+        return _dump(
+            {
+                "error": "held_arguments_conflict",
+                "hint": (
+                    'Pass either held="<reason>" to set a hold or clear_held=True to '
+                    "remove one, not both."
+                ),
+            }
+        )
+    h: str | bool | None = held if held else (False if clear_held else None)
     hu = held_until if held_until else None
     dd = due_date if due_date else None
     sd = start_date if start_date else None
@@ -1469,7 +1492,8 @@ async def redmine_bulk_update_issues(
     notes: str = "",
     custom_fields: list | str = "",
     difficulty: str = "",
-    held: bool = False,
+    held: str = "",
+    clear_held: bool = False,
     held_until: str = "",
     due_date: str = "",
     start_date: str = "",
@@ -1487,9 +1511,15 @@ async def redmine_bulk_update_issues(
             "value": "..."}`` dicts). Merged into each issue's PUT.
         difficulty: convenience for the Difficulty custom field
             (``"Unclassified"`` / ``"Easy"`` / ``"Normal"`` / ``"Hard"``).
-        held: ``True`` marks every issue as held. ``False`` (default)
-            means unchanged.
+        held: **reason string** applied as the hold on every issue in the
+            batch (e.g. ``"waiting on upstream patch"``). Empty (default)
+            means unchanged. Booleans are rejected with
+            ``held_reason_required`` — a bare flag records nothing and
+            would overwrite every existing reason in the batch at once.
+        clear_held: set ``True`` to remove the hold from every issue in
+            the batch. Mutually exclusive with a non-empty ``held``.
         held_until: ISO-8601 date for the Held Until custom field.
+            Optional and independent of ``held``.
         due_date: ISO-8601 date to set on every issue.
         start_date: ISO-8601 date to set on every issue.
         done_ratio: 0-100 progress percent; ``-1`` (default) means
@@ -1509,7 +1539,17 @@ async def redmine_bulk_update_issues(
     nt = notes if notes else None
     cf = custom_fields if isinstance(custom_fields, list) and custom_fields else None
     diff = difficulty if difficulty else None
-    h = held if held else None
+    if held and clear_held:
+        return _dump(
+            {
+                "error": "held_arguments_conflict",
+                "hint": (
+                    'Pass either held="<reason>" to set a hold or clear_held=True to '
+                    "remove one, not both."
+                ),
+            }
+        )
+    h: str | bool | None = held if held else (False if clear_held else None)
     hu = held_until if held_until else None
     dd = due_date if due_date else None
     sd = start_date if start_date else None

@@ -29,6 +29,7 @@ from typing import Any
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import (
+    HeldReasonRequired,
     RedmineAPIError,
     StructuredError,
     WorkflowTransitionDisallowed,
@@ -281,11 +282,29 @@ async def _apply_difficulty(
     return _merge_custom_field(custom_fields, field_id, DIFFICULTY_DEFAULT_VALUE)
 
 
+def _validate_held_reason(held: str | bool | None) -> HeldReasonRequired | None:
+    """Reject ``held=True`` (and whitespace-only reasons); allow str / False / None.
+
+    The Held field is free text a human reads later to decide whether the hold
+    still applies.  ``held=True`` previously wrote the literal ``"1"``, which
+    records nothing and overwrites whatever prose was there — a silent
+    downgrade that is easy to do by accident and invisible afterwards.
+
+    ``False`` (clear the hold) and ``None`` (leave unchanged) stay valid, so
+    only the write-a-meaningless-value path is closed off.
+    """
+    if held is True:
+        return HeldReasonRequired()
+    if isinstance(held, str) and not held.strip():
+        return HeldReasonRequired()
+    return None
+
+
 async def _apply_held(
     client: RedmineClient,
     cache: SchemaCache,
     custom_fields: list[dict[str, Any]] | None,
-    held: bool | None,
+    held: str | bool | None,
     held_until: str | None,
 ) -> list[dict[str, Any]] | None:
     """Translate ``held`` / ``held_until`` convenience params into custom_fields entries.
@@ -294,10 +313,13 @@ async def _apply_held(
     Silently returns ``custom_fields`` unchanged if the Held fields
     aren't discoverable in Redmine.
 
+    ``held`` takes the **reason** the issue is held, as a string.  A bare
+    ``held=True`` is rejected by :func:`_validate_held_reason` before this
+    runs — see that function for why.  ``held=False`` clears the hold.
+
     If the caller already provided an explicit ``custom_fields`` entry
     for the same field id, the explicit entry wins and the convenience
-    parameter is skipped for that field.  This prevents ``held=True``
-    from overwriting a user-supplied reason string with the bare ``"1"``.
+    parameter is skipped for that field.
     """
     if held is None and held_until is None:
         return custom_fields
@@ -313,10 +335,12 @@ async def _apply_held(
             field_id = int(field["id"])
             # Explicit custom_fields entry for this field takes precedence.
             if not _has_custom_field_entry(custom_fields, field_id, HELD_FIELD_NAME):
+                # held is a str (the reason) or False (clear). True never reaches
+                # here; _validate_held_reason rejects it at the tool boundary.
                 custom_fields = _merge_custom_field(
                     custom_fields,
                     field_id,
-                    "1" if held else "",
+                    held if isinstance(held, str) else "",
                     field_name=HELD_FIELD_NAME,
                 )
 
@@ -377,7 +401,7 @@ async def create_issue(
     assigned_to_id: int | None = None,
     custom_fields: list[dict[str, Any]] | None = None,
     difficulty: str | None = None,
-    held: bool | None = None,
+    held: str | bool | None = None,
     held_until: str | None = None,
     due_date: str | None = None,
     start_date: str | None = None,
@@ -395,9 +419,17 @@ async def create_issue(
     field is not discoverable in Redmine.
 
     The ``held`` and ``held_until`` parameters are convenience shortcuts
-    for the ``Held`` (boolean/checkbox) and ``Held Until`` (date) custom
-    fields. ``held=True`` marks the issue as held; ``held_until`` sets
-    the date (ISO-8601). Silently no-ops if the fields aren't configured.
+    for the ``Held`` (free-text) and ``Held Until`` (date) custom fields.
+    **``held`` takes the reason the issue is held, as a string** — e.g.
+    ``held="waiting on upstream patch"``. ``held=True`` is rejected with
+    ``held_reason_required``: a bare flag records nothing and overwrites
+    any reason already in the field. ``held=False`` clears the hold.
+
+    ``held_until`` is optional and independent — plenty of holds have no
+    knowable end date ("until upstream ships a fix"), so a hold with a
+    reason and no date is a valid, expected state.
+
+    Silently no-ops if the fields aren't configured in Redmine.
     """
     validation_view: dict[str, Any] = {
         "project": project,
@@ -407,6 +439,9 @@ async def create_issue(
     if custom_fields is not None:
         validation_view["custom_fields"] = custom_fields
     errs: list[StructuredError] = []
+    held_err = _validate_held_reason(held)
+    if held_err is not None:
+        errs.append(held_err)
     errs.extend(field_validators.validate_required(validation_view, op="create"))
     errs.extend(field_validators.validate_custom_fields(validation_view, known_field_ids=None))
     if errs:
@@ -491,7 +526,7 @@ async def update_issue(
     fixed_version_id: int | str | None = None,
     custom_fields: list[dict[str, Any]] | None = None,
     difficulty: str | None = None,
-    held: bool | None = None,
+    held: str | bool | None = None,
     held_until: str | None = None,
     due_date: str | None = None,
     start_date: str | None = None,
@@ -511,10 +546,19 @@ async def update_issue(
     values on every unrelated update.
 
     The ``held`` and ``held_until`` parameters are convenience shortcuts
-    for the ``Held`` and ``Held Until`` custom fields. ``held=True`` marks
-    the issue as held; ``held=False`` clears it. ``held_until`` sets the
-    date (ISO-8601). Omitting either means "don't change."
+    for the ``Held`` and ``Held Until`` custom fields. **``held`` takes the
+    reason the issue is held, as a string** — e.g.
+    ``held="waiting on upstream patch"``. ``held=True`` is rejected with
+    ``held_reason_required``, because a bare flag records nothing and
+    overwrites whatever reason was already there. ``held=False`` clears the
+    hold. ``held_until`` sets an optional date (ISO-8601) — many holds have
+    no knowable end date, so a reason without a date is a valid state.
+    Omitting either means "don't change."
     """
+    held_err = _validate_held_reason(held)
+    if held_err is not None:
+        return _validation_response([held_err])
+
     try:
         current = await get_issue(client, cache, issue_id, include="attachments,journals")
     except RedmineAPIError as e:

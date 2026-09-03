@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: `held` now takes the reason, not a boolean.** `held=True` wrote
+  the literal string `"1"` into the `Held` custom field — a value that records
+  nothing and silently replaced whatever prose was already there. Since `Held`
+  is free text a human reads later to decide whether a hold still applies, a
+  bare flag is strictly worse than no write at all. `held` is now
+  `str | bool | None`:
+  - `held="waiting on upstream patch"` — set the reason
+  - `held=False` — clear the hold
+  - `held=None` / omitted — leave unchanged
+  - `held=True` (or a whitespace-only string) — rejected with
+    `held_reason_required`
+
+  Applies to `create_issue`, `update_issue` and `bulk_update_issues`; the bulk
+  path validates once up front rather than failing per issue, since a bad
+  `held` there would overwrite every reason in the batch at once.
+
+### Added
+- **`clear_held` parameter on `redmine_update_issue` and
+  `redmine_bulk_update_issues`.** Clearing a hold via the convenience param was
+  previously impossible: the server collapsed `held=False` to `None` with
+  `h = held if held else None`, so the falsy sentinel meant "unchanged" and the
+  documented workaround was to pass `custom_fields` by hand. `clear_held=True`
+  now does it directly. Passing both a non-empty `held` and `clear_held` returns
+  `held_arguments_conflict` rather than picking a winner silently.
+- `HeldReasonRequired` structured error (`held_reason_required`).
+
 ### Added
 - **Custom-field filtering and sorting in `redmine_search_issues`.** The tool
   built its query params from a fixed whitelist (subject, project, status,
