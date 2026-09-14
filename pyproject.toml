@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Software Development :: Bug Tracking",
 ]
 dependencies = [
-    "mcp>=1.23.0,<2.0.0",
+    "mcp>=2.2.0,<2.3.0",
     "httpx>=0.27.0",
     "platformdirs>=4.0.0",
 ]
