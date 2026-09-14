@@ -49,11 +49,11 @@ ENDPOINTS: list[dict[str, str]] = [
     },
     {"method": "POST", "path": "/projects.json", "purpose": "Create a project"},
     {
-        "method": "POST",
+        "method": "PUT",
         "path": "/projects/{id}/archive.json",
         "purpose": "Archive a project (Redmine 5.0+)",
     },
-    {"method": "POST", "path": "/projects/{id}/unarchive.json", "purpose": "Unarchive a project"},
+    {"method": "PUT", "path": "/projects/{id}/unarchive.json", "purpose": "Unarchive a project"},
     {
         "method": "GET",
         "path": "/projects/{id}/issue_categories.json",
@@ -107,8 +107,12 @@ ENDPOINTS: list[dict[str, str]] = [
         "path": "/projects/{id}/boards.json",
         "purpose": "Forum boards (boards module)",
     },
-    {"method": "GET", "path": "/wiki/{project}/{title}.json", "purpose": "Fetch a wiki page"},
-    {"method": "POST", "path": "/search.json", "purpose": "Full-text search (q, scope)"},
+    {
+        "method": "GET",
+        "path": "/projects/{project}/wiki/{title}.json",
+        "purpose": "Fetch a wiki page",
+    },
+    {"method": "GET", "path": "/search.json", "purpose": "Full-text search (q, scope)"},
 ]
 
 

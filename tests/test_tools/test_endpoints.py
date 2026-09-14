@@ -27,3 +27,11 @@ def test_catalog_no_match() -> None:
     result = endpoints.list_endpoints("zzz-no-such-thing")
     assert result["total_count"] == 0
     assert result["endpoints"] == []
+
+
+def test_catalog_matches_typed_tool_routes_and_verbs() -> None:
+    by_path = {entry["path"]: entry for entry in endpoints.ENDPOINTS}
+    assert by_path["/search.json"]["method"] == "GET"
+    assert by_path["/projects/{id}/archive.json"]["method"] == "PUT"
+    assert by_path["/projects/{id}/unarchive.json"]["method"] == "PUT"
+    assert by_path["/projects/{project}/wiki/{title}.json"]["method"] == "GET"
