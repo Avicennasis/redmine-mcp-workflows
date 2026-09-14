@@ -284,3 +284,19 @@ def test_features_default_empty() -> None:
 def test_features_parsed() -> None:
     cfg = Config.from_env(env={"REDMINE_MCP_FEATURES": "issues, wiki ,time"})
     assert cfg.features == ("issues", "wiki", "time")
+
+
+# ---- impersonation ----
+
+
+def test_switch_user_unset_is_none() -> None:
+    assert Config.from_env(env={}).switch_user is None
+
+
+def test_switch_user_parsed_and_trimmed() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_SWITCH_USER": "  alice  "})
+    assert cfg.switch_user == "alice"
+
+
+def test_switch_user_blank_is_none() -> None:
+    assert Config.from_env(env={"REDMINE_MCP_SWITCH_USER": "   "}).switch_user is None

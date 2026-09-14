@@ -123,6 +123,14 @@ def _get_config() -> Config:
     return _config
 
 
+def _cache_identity(cfg: Config) -> str:
+    """Return the permission identity represented by this configuration."""
+    credential = cfg.require_credential()
+    if cfg.switch_user:
+        return f"{credential}\0X-Redmine-Switch-User:{cfg.switch_user}"
+    return credential
+
+
 def _get_cache() -> SchemaCache:
     global _cache
     if _cache is None:
@@ -131,12 +139,12 @@ def _get_cache() -> SchemaCache:
         # API key unconditionally broke OAuth-only deployments (only
         # REDMINE_OAUTH_TOKEN set): every tool died on its first call with
         # "Redmine API key not configured" before reaching the API.
-        credential = cfg.require_credential()
+        identity = _cache_identity(cfg)
         _cache = SchemaCache(
             db_path=cfg.cache_dir / "schema.db",
             ttl_seconds=cfg.cache_ttl_seconds,
         )
-        _cache.reconcile_auth(credential)
+        _cache.reconcile_auth(identity)
         atexit.register(_cache.close)
     return _cache
 

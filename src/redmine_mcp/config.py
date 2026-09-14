@@ -106,6 +106,8 @@ class Config:
     tool_denylist: tuple[str, ...] = ()
     # Enabled tool categories (see tool_categories). Empty = all.
     features: tuple[str, ...] = ()
+    # Admin impersonation: send X-Redmine-Switch-User to act as another user.
+    switch_user: str | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -152,6 +154,7 @@ class Config:
             tool_allowlist=_parse_list(e.get("REDMINE_MCP_TOOL_ALLOWLIST")),
             tool_denylist=_parse_list(e.get("REDMINE_MCP_TOOL_DENYLIST")),
             features=_parse_list(e.get("REDMINE_MCP_FEATURES")),
+            switch_user=(e.get("REDMINE_MCP_SWITCH_USER") or "").strip() or None,
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),

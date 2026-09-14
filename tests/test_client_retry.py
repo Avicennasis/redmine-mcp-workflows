@@ -228,3 +228,26 @@ def test_client_passes_ca_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Config, "verify_tls", lambda self: context)
     cfg = Config(api_key="k", redmine_url=URL, ca_bundle="/etc/ssl/ca.pem")
     assert _captured_httpx_kwargs(monkeypatch, cfg)["verify"] is context
+
+
+def test_client_sets_switch_user_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = Config(api_key="k", redmine_url=URL, switch_user="alice")
+    headers = _captured_httpx_kwargs(monkeypatch, cfg)["headers"]
+    assert headers["X-Redmine-Switch-User"] == "alice"
+
+
+def test_client_omits_switch_user_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = Config(api_key="k", redmine_url=URL)
+    headers = _captured_httpx_kwargs(monkeypatch, cfg)["headers"]
+    assert "X-Redmine-Switch-User" not in headers
+
+
+def test_extra_headers_cannot_override_switch_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = Config(
+        api_key="k",
+        redmine_url=URL,
+        switch_user="alice",
+        extra_headers={"x-redmine-switch-user": "mallory"},
+    )
+    headers = httpx.Headers(_captured_httpx_kwargs(monkeypatch, cfg)["headers"])
+    assert headers["X-Redmine-Switch-User"] == "alice"
