@@ -90,6 +90,7 @@ class RedmineClient:
             base_url=config.redmine_url,
             headers=headers,
             timeout=timeout,
+            verify=config.verify_tls(),
         )
 
     async def __aenter__(self) -> RedmineClient:

@@ -8,6 +8,7 @@ can construct ``Config`` directly to avoid env-var pollution.
 from __future__ import annotations
 
 import os
+import ssl
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -75,6 +76,11 @@ class Config:
     held_field_id: int | None = None
     held_until_field_id: int | None = None
     difficulty_field_id: int | None = None
+    # TLS: verify server certificates (default true). ``ca_bundle`` points at
+    # a custom CA file/dir for self-signed or private-CA Redmine deployments;
+    # when set it takes precedence over ``ssl_verify``.
+    ssl_verify: bool = True
+    ca_bundle: str | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -112,10 +118,28 @@ class Config:
             held_field_id=_parse_optional_int(e.get("REDMINE_MCP_HELD_FIELD_ID")),
             held_until_field_id=_parse_optional_int(e.get("REDMINE_MCP_HELD_UNTIL_FIELD_ID")),
             difficulty_field_id=_parse_optional_int(e.get("REDMINE_MCP_DIFFICULTY_FIELD_ID")),
+            ssl_verify=True
+            if e.get("REDMINE_MCP_SSL_VERIFY") is None
+            else _truthy(e.get("REDMINE_MCP_SSL_VERIFY")),
+            ca_bundle=(e.get("REDMINE_MCP_CA_BUNDLE") or "").strip() or None,
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
         )
+
+    def verify_tls(self) -> bool | ssl.SSLContext:
+        """Return the value httpx should use for its ``verify`` argument.
+
+        A configured ``ca_bundle`` (custom CA file or directory) wins over
+        ``ssl_verify``; otherwise certificate verification is governed by
+        ``ssl_verify``. Build an explicit SSL context for custom CAs because
+        HTTPX's legacy ``verify=<path string>`` form is deprecated.
+        """
+        if self.ca_bundle:
+            if Path(self.ca_bundle).is_dir():
+                return ssl.create_default_context(capath=self.ca_bundle)
+            return ssl.create_default_context(cafile=self.ca_bundle)
+        return self.ssl_verify
 
     def require_api_key(self) -> str:
         """Return the API key, raising a clear error if missing.

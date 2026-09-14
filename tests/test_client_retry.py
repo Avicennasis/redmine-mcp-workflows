@@ -10,6 +10,7 @@ Also covers the same-origin guard on :meth:`RedmineClient.get_binary`.
 
 from __future__ import annotations
 
+import ssl
 from typing import Any
 
 import httpx
@@ -193,3 +194,37 @@ async def test_get_binary_refuses_same_host_different_origin(url: str) -> None:
     with pytest.raises(RedmineAPIError):
         await client.get_binary(url)
     assert transport.calls == []
+
+
+# ---------------------------------------------------------------------
+# TLS verify wiring
+# ---------------------------------------------------------------------
+
+
+def _captured_httpx_kwargs(monkeypatch: pytest.MonkeyPatch, config: Config) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+
+    def fake_async_client(*args: Any, **kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(client_module.httpx, "AsyncClient", fake_async_client)
+    RedmineClient(config)
+    return captured
+
+
+def test_client_passes_verify_true_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    kwargs = _captured_httpx_kwargs(monkeypatch, Config(api_key="k", redmine_url=URL))
+    assert kwargs["verify"] is True
+
+
+def test_client_passes_verify_false_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = Config(api_key="k", redmine_url=URL, ssl_verify=False)
+    assert _captured_httpx_kwargs(monkeypatch, cfg)["verify"] is False
+
+
+def test_client_passes_ca_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
+    context = ssl.create_default_context()
+    monkeypatch.setattr(Config, "verify_tls", lambda self: context)
+    cfg = Config(api_key="k", redmine_url=URL, ca_bundle="/etc/ssl/ca.pem")
+    assert _captured_httpx_kwargs(monkeypatch, cfg)["verify"] is context
