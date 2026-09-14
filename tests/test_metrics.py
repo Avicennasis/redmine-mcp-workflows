@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from redmine_mcp import server
@@ -63,3 +64,33 @@ async def test_wrap_counts_structured_error_as_error(monkeypatch) -> None:
 
     await server._wrap(factory)
     assert metrics.snapshot()["total_errors"] == 1
+
+
+async def test_wrap_does_not_mask_successful_write_when_invalidation_fails(
+    monkeypatch, caplog
+) -> None:  # noqa: ANN001
+    metrics = Metrics()
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc) -> None:
+            return None
+
+    class BrokenCache:
+        def invalidate_projects(self) -> None:
+            raise RuntimeError("disk unavailable")
+
+    monkeypatch.setattr(server, "METRICS", metrics)
+    monkeypatch.setattr(server, "_get_config", lambda: SimpleNamespace(read_only=False))
+    monkeypatch.setattr(server, "_get_cache", BrokenCache)
+    monkeypatch.setattr(server, "RedmineClient", lambda _cfg: FakeClient())
+
+    async def factory(_client, _cache):
+        return {"created": True}
+
+    result = await server._wrap(factory, write=True)
+    assert json.loads(result) == {"created": True}
+    assert "cache invalidation failed after successful write" in caplog.text
+    assert metrics.snapshot()["total_errors"] == 0
