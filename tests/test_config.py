@@ -252,3 +252,23 @@ def test_disabled_tools_parsed_and_trimmed() -> None:
         env={"REDMINE_MCP_DISABLED_TOOLS": "redmine_delete_issue, redmine_reply_message ,"}
     )
     assert cfg.disabled_tools == frozenset({"redmine_delete_issue", "redmine_reply_message"})
+
+
+# ---- tool allow/deny regex ----
+
+
+def test_tool_allowdeny_default_empty() -> None:
+    cfg = Config.from_env(env={})
+    assert cfg.tool_allowlist == ()
+    assert cfg.tool_denylist == ()
+
+
+def test_tool_allowdeny_parsed_in_order() -> None:
+    cfg = Config.from_env(
+        env={
+            "REDMINE_MCP_TOOL_ALLOWLIST": r"^redmine_(get|list)_.*",
+            "REDMINE_MCP_TOOL_DENYLIST": r"delete",
+        }
+    )
+    assert cfg.tool_allowlist == (r"^redmine_(get|list)_.*",)
+    assert cfg.tool_denylist == ("delete",)

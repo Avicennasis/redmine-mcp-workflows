@@ -46,3 +46,12 @@ def test_blank_entries_ignored() -> None:
     out = filter_tool_names(NAMES, disabled={"", "redmine_delete_issue"})
     assert "redmine_delete_issue" not in out
     assert len(out) == len(NAMES) - 1
+
+
+def test_denylist_wins_over_allowlist() -> None:
+    out = filter_tool_names(
+        NAMES,
+        allowlist=[r"^redmine_(get|delete)_issue$"],
+        denylist=[r"delete"],
+    )
+    assert out == {"redmine_get_issue"}

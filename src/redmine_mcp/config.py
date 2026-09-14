@@ -63,6 +63,13 @@ def _parse_names(raw: str | None) -> frozenset[str]:
     return frozenset(item.strip() for item in raw.split(",") if item.strip())
 
 
+def _parse_list(raw: str | None) -> tuple[str, ...]:
+    """Parse a comma-separated list, preserving order, dropping blanks."""
+    if not raw:
+        return ()
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Config:
     """Resolved runtime configuration.
@@ -93,6 +100,10 @@ class Config:
     default_time_issue: int | None = None
     # Tool names to hide from the advertised surface at startup.
     disabled_tools: frozenset[str] = frozenset()
+    # Regex patterns: allowlist keeps only matching tools; denylist then
+    # removes matching tools (deny wins).
+    tool_allowlist: tuple[str, ...] = ()
+    tool_denylist: tuple[str, ...] = ()
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -136,6 +147,8 @@ class Config:
             ca_bundle=(e.get("REDMINE_MCP_CA_BUNDLE") or "").strip() or None,
             default_time_issue=_parse_optional_int(e.get("REDMINE_MCP_DEFAULT_TIME_ISSUE")),
             disabled_tools=_parse_names(e.get("REDMINE_MCP_DISABLED_TOOLS")),
+            tool_allowlist=_parse_list(e.get("REDMINE_MCP_TOOL_ALLOWLIST")),
+            tool_denylist=_parse_list(e.get("REDMINE_MCP_TOOL_DENYLIST")),
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
