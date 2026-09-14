@@ -23,6 +23,7 @@ string and the ``issubclass`` check raises ``TypeError``. Annotations on
 local variables still use PEP 604 union syntax (Python 3.10+ native).
 """
 
+import asyncio
 import atexit
 import contextlib
 import datetime
@@ -48,6 +49,7 @@ from .tools import (
     files,
     forums,
     groups,
+    health,
     issue_categories,
     issue_statuses,
     issues,
@@ -68,6 +70,20 @@ from .tools import (
 
 log = logging.getLogger("redmine_mcp")
 
+
+@contextlib.asynccontextmanager
+async def _server_lifespan(_: FastMCP):
+    """Start the backend probe without delaying stdio protocol startup."""
+    task = asyncio.create_task(_startup_healthcheck(_get_config()))
+    try:
+        yield {}
+    finally:
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 mcp = FastMCP(
     "redmine",
     instructions=(
@@ -81,6 +97,7 @@ mcp = FastMCP(
         "do NOT use literal backslash-n (\\\\n) escape sequences, which get "
         "stored as visible \\\\n text instead of line breaks."
     ),
+    lifespan=_server_lifespan,
 )
 
 # Module-level state. Lazy-initialized on first tool call so import is cheap
@@ -2812,6 +2829,41 @@ async def redmine_request(
         )
 
     return await _wrap(factory, write=is_write)
+
+
+@mcp.tool()
+async def redmine_health() -> str:
+    """Validate Redmine connectivity and credentials.
+
+    Fetches the current account; ``status: ok`` means the URL is reachable
+    and the credential was accepted. Returns a structured error otherwise.
+    """
+
+    async def factory(client, cache):
+        return await health.health(client, cache)
+
+    return await _wrap(factory)
+
+
+async def _startup_healthcheck(cfg: Config) -> None:
+    """Probe Redmine once at startup and log a clear result.
+
+    Never raises: a broken backend should not stop the stdio server from
+    starting (clients would see a dead process instead of a diagnosable
+    tool result), but it must not be silent either.
+    """
+    try:
+        async with RedmineClient(cfg) as client:
+            result = await health.health(client)
+    except Exception as e:  # noqa: BLE001 — startup must not crash the server
+        log.error("Redmine startup health check failed: %s", e)
+        return
+    if result.get("status") == "ok":
+        log.info(
+            "Redmine startup health check OK (account=%s)", result.get("account", {}).get("login")
+        )
+    else:
+        log.error("Redmine startup health check failed: %s", result.get("error", result))
 
 
 def apply_tool_filter(config: Config | None = None) -> set[str]:
