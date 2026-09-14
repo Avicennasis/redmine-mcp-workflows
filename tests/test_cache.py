@@ -418,3 +418,22 @@ def test_fingerprint_is_deterministic_and_distinguishing() -> None:
 
     assert _fingerprint("same") == _fingerprint("same")
     assert _fingerprint("one") != _fingerprint("two")
+
+
+def test_invalidate_projects_clears_only_projects(tmp_path) -> None:  # noqa: ANN001
+    from redmine_mcp.cache.schema_db import SchemaCache
+
+    cache = SchemaCache(db_path=tmp_path / "schema.db", ttl_seconds=60)
+    try:
+        cache.put_project(15, "claudecode", {"id": 15, "name": "ClaudeCode"})
+        cache.put_meta_json("roles", [{"id": 4, "name": "Developer"}])
+        assert cache.get_project("claudecode") is not None
+
+        removed = cache.invalidate_projects()
+
+        assert removed == 1
+        assert cache.get_project("claudecode") is None
+        # Non-project cached data is untouched.
+        assert cache.get_meta_json("roles") == [{"id": 4, "name": "Developer"}]
+    finally:
+        cache.close()

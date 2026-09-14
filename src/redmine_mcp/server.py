@@ -306,6 +306,10 @@ async def _wrap(coro_factory, *, write: bool = False):
                 result = await coro_factory(client, cache)
             if isinstance(result, dict) and "error" in result:
                 failed = True
+            elif write:
+                # A mutation may have changed a project's trackers/categories;
+                # drop the project cache so the next read refetches.
+                cache.invalidate_projects()
             return _dump(result)
         except RedmineAPIError as e:
             failed = True

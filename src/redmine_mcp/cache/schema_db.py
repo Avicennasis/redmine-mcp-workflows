@@ -530,6 +530,17 @@ class SchemaCache:
     # invalidation
     # ------------------------------------------------------------------
 
+    def invalidate_projects(self) -> int:
+        """Drop every cached project row; returns the number removed.
+
+        Used after project/category mutations — a project's cached schema can
+        otherwise keep stale trackers/categories until its TTL expires.
+        """
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM projects")
+            self._conn.commit()
+        return cur.rowcount
+
     def invalidate(self, scope: str = "all") -> dict[str, int]:
         """Invalidate cached entries.
 
