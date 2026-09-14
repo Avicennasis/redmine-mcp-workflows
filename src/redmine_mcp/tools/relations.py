@@ -69,6 +69,61 @@ def _normalize_relation_type(raw: str) -> str | None:
     return _ALIASES.get(key)
 
 
+# Directed relation types and the edge they add. ``(from_attr, to_attr)``
+# selects which endpoint is the source/target; ``follow`` is the relation
+# type to walk when testing reachability.
+_DIRECTED_EDGES: dict[str, tuple[str, str, str]] = {
+    "blocks": ("issue_id", "target", "blocks"),
+    "blocked": ("target", "issue_id", "blocks"),
+    "precedes": ("issue_id", "target", "precedes"),
+    "follows": ("target", "issue_id", "precedes"),
+}
+
+_MAX_CYCLE_NODES = 100
+
+
+async def _reaches(
+    client: RedmineClient,
+    start: int,
+    goal: int,
+    follow_type: str,
+    *,
+    max_nodes: int = _MAX_CYCLE_NODES,
+) -> bool:
+    """True if ``start`` can already reach ``goal`` via ``follow_type`` edges.
+
+    Walks the directed relation graph breadth-first, capped at ``max_nodes``
+    to bound API calls. An unreadable node is treated as a dead end rather
+    than an error — the pre-flight is advisory, and the API still enforces
+    validity when the relation is posted.
+    """
+    if start == goal:
+        return True
+    seen: set[int] = set()
+    frontier: list[int] = [start]
+    while frontier:
+        current = frontier.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        if len(seen) > max_nodes:
+            return False
+        try:
+            payload = await client.get(f"/issues/{current}/relations.json")
+        except RedmineAPIError:
+            return False
+        rels = payload.get("relations", []) if isinstance(payload, dict) else []
+        for rel in rels:
+            if rel.get("relation_type") != follow_type or rel.get("issue_id") != current:
+                continue
+            nxt = rel.get("issue_to_id")
+            if nxt == goal:
+                return True
+            if nxt not in seen:
+                frontier.append(nxt)
+    return False
+
+
 async def list_relations(
     client: RedmineClient,
     cache: SchemaCache,  # noqa: ARG001 — kept for signature parity
@@ -121,6 +176,24 @@ async def add_relation(
     }
     if delay is not None:
         relation["delay"] = delay
+
+    edge = _DIRECTED_EDGES.get(canonical)
+    if edge is not None:
+        from_sel, to_sel, follow = edge
+        endpoints = {"issue_id": issue_id, "target": target_issue_id}
+        source, dest = endpoints[from_sel], endpoints[to_sel]
+        if await _reaches(client, dest, source, follow):
+            return {
+                "error": "relation_cycle",
+                "hint": (
+                    f"Adding {canonical!r} between #{issue_id} and "
+                    f"#{target_issue_id} would create a cycle "
+                    f"(#{dest} already {follow} #{source})."
+                ),
+                "issue_id": issue_id,
+                "target_issue_id": target_issue_id,
+                "relation_type": canonical,
+            }
 
     try:
         resp = await client.post(
