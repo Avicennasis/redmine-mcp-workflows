@@ -181,3 +181,33 @@ def test_require_auth_headers_raises_when_both_missing() -> None:
     cfg = Config()
     with pytest.raises(RuntimeError, match="No Redmine credentials configured"):
         cfg.require_auth_headers()
+
+
+# ---- TLS / SSL options ----
+
+
+def test_tls_verify_defaults_on() -> None:
+    cfg = Config.from_env(env={})
+    assert cfg.ssl_verify is True
+    assert cfg.ca_bundle is None
+    assert cfg.verify_tls() is True
+
+
+def test_tls_verify_can_be_disabled() -> None:
+    for value in ("0", "false", "no", "off"):
+        cfg = Config.from_env(env={"REDMINE_MCP_SSL_VERIFY": value})
+        assert cfg.ssl_verify is False, value
+        assert cfg.verify_tls() is False
+
+
+def test_tls_ca_bundle_overrides_verify() -> None:
+    cfg = Config.from_env(
+        env={"REDMINE_MCP_SSL_VERIFY": "false", "REDMINE_MCP_CA_BUNDLE": "/etc/ssl/redmine-ca.pem"}
+    )
+    assert cfg.ca_bundle == "/etc/ssl/redmine-ca.pem"
+    assert cfg.verify_tls() == "/etc/ssl/redmine-ca.pem"
+
+
+def test_tls_blank_ca_bundle_is_none() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_CA_BUNDLE": "   "})
+    assert cfg.ca_bundle is None
