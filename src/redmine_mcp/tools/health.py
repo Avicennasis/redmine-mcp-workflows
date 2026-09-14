@@ -25,9 +25,16 @@ async def health(
         return {"status": "error", "error": e.as_structured()}
 
     user = payload.get("user") if isinstance(payload, dict) else None
+    if not isinstance(user, dict) or user.get("id") is None or not user.get("login"):
+        return {
+            "status": "error",
+            "error": {
+                "error": "health_response_malformed",
+                "hint": "Redmine returned 2xx but no valid current-user object.",
+            },
+        }
     account: dict[str, Any] = {}
-    if isinstance(user, dict):
-        for key in ("id", "login", "firstname", "lastname", "mail"):
-            if user.get(key) is not None:
-                account[key] = user[key]
+    for key in ("id", "login", "firstname", "lastname", "mail"):
+        if user.get(key) is not None:
+            account[key] = user[key]
     return {"status": "ok", "account": account, "source": "api"}

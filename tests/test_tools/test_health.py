@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
+from redmine_mcp import server
 from redmine_mcp.errors import RedmineAPIError
 from redmine_mcp.tools import health
 
@@ -46,8 +48,22 @@ async def test_health_error_is_structured() -> None:
     assert result["error"]["status_code"] == 401
 
 
-async def test_health_ignores_non_dict_payload() -> None:
+async def test_health_rejects_non_dict_payload() -> None:
     client = FakeClient(response=None)
     result = await health.health(client)
-    assert result["status"] == "ok"
-    assert result["account"] == {}
+    assert result["status"] == "error"
+    assert result["error"]["error"] == "health_response_malformed"
+
+
+async def test_server_lifespan_does_not_wait_for_probe(monkeypatch) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_probe(_cfg) -> None:
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(server, "_startup_healthcheck", slow_probe)
+    async with server._server_lifespan(server.mcp):
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+        assert not release.is_set()

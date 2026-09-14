@@ -70,6 +70,20 @@ from .tools import (
 
 log = logging.getLogger("redmine_mcp")
 
+
+@contextlib.asynccontextmanager
+async def _server_lifespan(_: FastMCP):
+    """Start the backend probe without delaying stdio protocol startup."""
+    task = asyncio.create_task(_startup_healthcheck(_get_config()))
+    try:
+        yield {}
+    finally:
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 mcp = FastMCP(
     "redmine",
     instructions=(
@@ -83,6 +97,7 @@ mcp = FastMCP(
         "do NOT use literal backslash-n (\\\\n) escape sequences, which get "
         "stored as visible \\\\n text instead of line breaks."
     ),
+    lifespan=_server_lifespan,
 )
 
 # Module-level state. Lazy-initialized on first tool call so import is cheap
@@ -2876,9 +2891,6 @@ def main() -> None:
     """Console-script entry point. Runs the MCP server over stdio."""
     cfg = _get_config()
     apply_tool_filter(cfg)
-    # Skip when already inside a running loop (e.g. imported by a harness).
-    with contextlib.suppress(RuntimeError):
-        asyncio.run(_startup_healthcheck(cfg))
     mcp.run()
 
 
