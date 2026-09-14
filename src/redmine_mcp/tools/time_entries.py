@@ -14,6 +14,7 @@ without round-tripping.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from ..cache.schema_db import SchemaCache
@@ -364,5 +365,79 @@ async def time_report(
         "entry_count": len(entries),
         "truncated": truncated,
         "groups": sorted(groups.values(), key=lambda g: g["hours"], reverse=True),
+        "source": "api",
+    }
+
+
+async def bulk_create_time_entries(
+    client: RedmineClient,
+    cache: SchemaCache,
+    *,
+    entries: list[dict[str, Any]],
+    pacing_seconds: float = 0.05,
+    stop_on_error: bool = False,
+    default_issue_id: int | None = None,
+) -> dict[str, Any]:
+    """Create several time entries in one call.
+
+    Each entry spec accepts the same fields as :func:`create_time_entry`
+    (``hours`` required; ``issue_id``/``project_id``/``activity``/``spent_on``
+    /``comments``/``user_id`` optional). Results are per-entry; one failure
+    does not abort the batch unless ``stop_on_error`` is set.
+    """
+    if len(entries) > 100:
+        return {
+            "error": "batch_too_large",
+            "hint": "A bulk time-entry request may contain at most 100 entries.",
+            "count": len(entries),
+            "max_entries": 100,
+        }
+
+    results: list[dict[str, Any]] = []
+    created = failed = 0
+    skipped_for_stop: list[Any] = []
+    for index, spec in enumerate(entries):
+        if not isinstance(spec, dict):
+            failed += 1
+            results.append({"index": index, "status": "failed", "error": "entry_not_object"})
+            if stop_on_error:
+                skipped_for_stop = list(range(index + 1, len(entries)))
+                break
+            continue
+        result = await create_time_entry(
+            client,
+            cache,
+            hours=spec.get("hours"),
+            issue_id=spec.get("issue_id"),
+            project_id=spec.get("project_id"),
+            activity=spec.get("activity"),
+            spent_on=spec.get("spent_on"),
+            comments=spec.get("comments"),
+            user_id=spec.get("user_id"),
+            default_issue_id=default_issue_id,
+        )
+        if isinstance(result, dict) and "error" in result:
+            failed += 1
+            results.append({"index": index, "status": "failed", "error": result})
+            if stop_on_error:
+                skipped_for_stop = list(range(index + 1, len(entries)))
+                break
+        else:
+            created += 1
+            entry = result.get("time_entry") if isinstance(result, dict) else None
+            entry_id = entry.get("id") if isinstance(entry, dict) else None
+            results.append({"index": index, "status": "created", "id": entry_id})
+        if pacing_seconds and index < len(entries) - 1:
+            await asyncio.sleep(pacing_seconds)
+
+    return {
+        "results": results,
+        "summary": {
+            "total": len(entries),
+            "created": created,
+            "failed": failed,
+            "skipped": len(skipped_for_stop),
+        },
+        "skipped_for_stop_on_error": skipped_for_stop,
         "source": "api",
     }

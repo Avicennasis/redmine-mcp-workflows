@@ -63,6 +63,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     "redmine_list_time_entries": "time",
     "redmine_today_time_entries": "time",
     "redmine_time_report": "time",
+    "redmine_bulk_create_time_entries": "time",
     "redmine_update_time_entry": "time",
     "redmine_delete_time_entry": "time",
     # versions

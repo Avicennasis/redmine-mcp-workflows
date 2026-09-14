@@ -391,3 +391,81 @@ async def test_time_report_never_fetches_past_cap(cache: SchemaCache) -> None:
     assert result["entry_count"] == 150
     assert result["truncated"] is True
     assert [call[2]["limit"] for call in client.calls] == [100, 50]
+
+
+# ---------------------------------------------------------------------
+# bulk_create_time_entries (#40858)
+# ---------------------------------------------------------------------
+
+
+async def test_bulk_create_creates_all(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/time_entries.json"): {"time_entry": {"id": 1}}})
+    result = await time_entries.bulk_create_time_entries(
+        client,
+        cache,
+        entries=[
+            {"hours": 1.0, "project_id": 15},
+            {"hours": 2.0, "project_id": 15},
+        ],
+        pacing_seconds=0,
+    )
+    assert result["summary"] == {"total": 2, "created": 2, "failed": 0, "skipped": 0}
+
+
+async def test_bulk_create_reports_per_entry_failure(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/time_entries.json"): {"time_entry": {"id": 1}}})
+    result = await time_entries.bulk_create_time_entries(
+        client,
+        cache,
+        entries=[
+            {"hours": 1.0, "project_id": 15},
+            {"hours": "not-a-number", "project_id": 15},
+        ],
+        pacing_seconds=0,
+    )
+    assert result["summary"]["created"] == 1
+    assert result["summary"]["failed"] == 1
+    assert result["results"][1]["status"] == "failed"
+
+
+async def test_bulk_create_stop_on_error_skips_remainder(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/time_entries.json"): {"time_entry": {"id": 1}}})
+    result = await time_entries.bulk_create_time_entries(
+        client,
+        cache,
+        entries=[
+            {"hours": "bad", "project_id": 15},
+            {"hours": 1.0, "project_id": 15},
+        ],
+        pacing_seconds=0,
+        stop_on_error=True,
+    )
+    assert result["summary"]["failed"] == 1
+    assert result["summary"]["skipped"] == 1
+    assert result["skipped_for_stop_on_error"] == [1]
+
+
+async def test_bulk_create_uses_default_issue(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/time_entries.json"): {"time_entry": {"id": 1}}})
+    await time_entries.bulk_create_time_entries(
+        client,
+        cache,
+        entries=[{"hours": 1.0}],
+        pacing_seconds=0,
+        default_issue_id=777,
+    )
+    posted = client.calls[-1][2]["time_entry"]
+    assert posted["issue_id"] == 777
+
+
+async def test_bulk_create_rejects_more_than_100_without_writes(cache: SchemaCache) -> None:
+    client = FakeClient()
+    result = await time_entries.bulk_create_time_entries(
+        client,
+        cache,
+        entries=[{"hours": 1.0}] * 101,
+        pacing_seconds=0,
+    )
+    assert result["error"] == "batch_too_large"
+    assert result["count"] == 101
+    assert client.calls == []
