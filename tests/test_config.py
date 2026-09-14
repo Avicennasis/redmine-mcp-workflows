@@ -221,3 +221,20 @@ def test_tls_ca_bundle_overrides_verify(monkeypatch: pytest.MonkeyPatch) -> None
 def test_tls_blank_ca_bundle_is_none() -> None:
     cfg = Config.from_env(env={"REDMINE_MCP_CA_BUNDLE": "   "})
     assert cfg.ca_bundle is None
+
+
+# ---- default time-entry issue ----
+
+
+def test_default_time_issue_unset_is_none() -> None:
+    assert Config.from_env(env={}).default_time_issue is None
+
+
+def test_default_time_issue_parsed() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_DEFAULT_TIME_ISSUE": "1234"})
+    assert cfg.default_time_issue == 1234
+
+
+def test_default_time_issue_garbage_is_none() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_DEFAULT_TIME_ISSUE": "nope"})
+    assert cfg.default_time_issue is None

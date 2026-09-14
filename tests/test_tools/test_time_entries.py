@@ -108,6 +108,25 @@ async def test_create_requires_issue_or_project(cache: SchemaCache) -> None:
     assert client.calls == []
 
 
+async def test_create_uses_default_issue_when_no_target(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/time_entries.json"): {"time_entry": {"id": 9}}})
+    result = await time_entries.create_time_entry(client, cache, hours=1.0, default_issue_id=777)
+    assert result["time_entry"]["id"] == 9
+    posted = client.calls[-1][2]["time_entry"]
+    assert posted["issue_id"] == 777
+    assert "project_id" not in posted
+
+
+async def test_create_explicit_target_beats_default(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/time_entries.json"): {"time_entry": {"id": 9}}})
+    await time_entries.create_time_entry(
+        client, cache, hours=1.0, project_id=15, default_issue_id=777
+    )
+    posted = client.calls[-1][2]["time_entry"]
+    assert posted["project_id"] == 15
+    assert "issue_id" not in posted
+
+
 async def test_create_rejects_invalid_hours_before_post(cache: SchemaCache) -> None:
     _seed_activities(cache)
     client = FakeClient()

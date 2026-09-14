@@ -81,6 +81,9 @@ class Config:
     # when set it takes precedence over ``ssl_verify``.
     ssl_verify: bool = True
     ca_bundle: str | None = None
+    # Fallback issue for time entries logged without an explicit target —
+    # routes meetings/admin time to a management issue.
+    default_time_issue: int | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -122,6 +125,7 @@ class Config:
             if e.get("REDMINE_MCP_SSL_VERIFY") is None
             else _truthy(e.get("REDMINE_MCP_SSL_VERIFY")),
             ca_bundle=(e.get("REDMINE_MCP_CA_BUNDLE") or "").strip() or None,
+            default_time_issue=_parse_optional_int(e.get("REDMINE_MCP_DEFAULT_TIME_ISSUE")),
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
