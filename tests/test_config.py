@@ -238,3 +238,17 @@ def test_default_time_issue_parsed() -> None:
 def test_default_time_issue_garbage_is_none() -> None:
     cfg = Config.from_env(env={"REDMINE_MCP_DEFAULT_TIME_ISSUE": "nope"})
     assert cfg.default_time_issue is None
+
+
+# ---- disabled tools ----
+
+
+def test_disabled_tools_default_empty() -> None:
+    assert Config.from_env(env={}).disabled_tools == frozenset()
+
+
+def test_disabled_tools_parsed_and_trimmed() -> None:
+    cfg = Config.from_env(
+        env={"REDMINE_MCP_DISABLED_TOOLS": "redmine_delete_issue, redmine_reply_message ,"}
+    )
+    assert cfg.disabled_tools == frozenset({"redmine_delete_issue", "redmine_reply_message"})

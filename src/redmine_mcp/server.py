@@ -36,6 +36,7 @@ from .client import RedmineClient
 from .config import Config
 from .errors import ReadOnlyModeError, RedmineAPIError
 from .logging_utils import install_redaction
+from .tool_filter import filter_tool_names
 from .tools import (
     attachments,
     bulk,
@@ -2765,9 +2766,25 @@ async def redmine_request(
     return await _wrap(factory, write=is_write)
 
 
+def apply_tool_filter(config: Config | None = None) -> set[str]:
+    """Remove tools excluded by ``REDMINE_MCP_DISABLED_TOOLS`` from the server.
+
+    Called once at startup. Returns the set of tool names that remain, so
+    callers (and tests) can assert on the effective surface.
+    """
+    cfg = config or _get_config()
+    registered = set(mcp._tool_manager._tools)  # noqa: SLF001 — no public name iterator
+    allowed = filter_tool_names(registered, disabled=cfg.disabled_tools)
+    for name in sorted(registered - allowed):
+        mcp.remove_tool(name)
+        log.info("tool disabled by REDMINE_MCP_DISABLED_TOOLS: %s", name)
+    return allowed
+
+
 def main() -> None:
     """Console-script entry point. Runs the MCP server over stdio."""
-    _get_config()
+    cfg = _get_config()
+    apply_tool_filter(cfg)
     mcp.run()
 
 
