@@ -8,6 +8,7 @@ can construct ``Config`` directly to avoid env-var pollution.
 from __future__ import annotations
 
 import os
+import ssl
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -126,15 +127,18 @@ class Config:
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
         )
 
-    def verify_tls(self) -> bool | str:
+    def verify_tls(self) -> bool | ssl.SSLContext:
         """Return the value httpx should use for its ``verify`` argument.
 
         A configured ``ca_bundle`` (custom CA file or directory) wins over
         ``ssl_verify``; otherwise certificate verification is governed by
-        ``ssl_verify``. Returns ``True``/``False`` or a CA path string.
+        ``ssl_verify``. Build an explicit SSL context for custom CAs because
+        HTTPX's legacy ``verify=<path string>`` form is deprecated.
         """
         if self.ca_bundle:
-            return self.ca_bundle
+            if Path(self.ca_bundle).is_dir():
+                return ssl.create_default_context(capath=self.ca_bundle)
+            return ssl.create_default_context(cafile=self.ca_bundle)
         return self.ssl_verify
 
     def require_api_key(self) -> str:

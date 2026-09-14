@@ -10,6 +10,7 @@ Also covers the same-origin guard on :meth:`RedmineClient.get_binary`.
 
 from __future__ import annotations
 
+import ssl
 from typing import Any
 
 import httpx
@@ -223,5 +224,7 @@ def test_client_passes_verify_false_when_disabled(monkeypatch: pytest.MonkeyPatc
 
 
 def test_client_passes_ca_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
+    context = ssl.create_default_context()
+    monkeypatch.setattr(Config, "verify_tls", lambda self: context)
     cfg = Config(api_key="k", redmine_url=URL, ca_bundle="/etc/ssl/ca.pem")
-    assert _captured_httpx_kwargs(monkeypatch, cfg)["verify"] == "/etc/ssl/ca.pem"
+    assert _captured_httpx_kwargs(monkeypatch, cfg)["verify"] is context
