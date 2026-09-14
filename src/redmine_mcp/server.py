@@ -47,6 +47,7 @@ from .tools import (
     comments,
     custom_fields,
     discovery,
+    endpoints,
     enumerations,
     files,
     forums,
@@ -270,6 +271,19 @@ async def _wrap(coro_factory, *, write: bool = False):
             return _dump({"error": "internal_error", "hint": str(e)})
     finally:
         METRICS.record(name, time.perf_counter() - started, error=failed)
+
+
+@mcp.tool()
+async def redmine_list_endpoints(query: str = "") -> str:
+    """List known Redmine REST endpoints (method, path, purpose).
+
+    Companion to the ``redmine_request`` passthrough: use it to find the
+    right path/verb before calling. Read-only; makes no API request.
+
+    Args:
+        query: optional case-insensitive substring over method/path/purpose.
+    """
+    return _dump(endpoints.list_endpoints(query or None))
 
 
 @mcp.tool()
