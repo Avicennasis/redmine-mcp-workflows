@@ -145,6 +145,7 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `REDMINE_URL` | `http://127.0.0.1:8281` | Redmine base URL. The default loopback is convenient for setups behind a reverse proxy that filters `X-Redmine-API-Key`. |
+| `REDMINE_MCP_ALLOWED_HOSTS` | _(empty: any)_ | Optional comma-separated hostname allow-list checked before authenticated clients are created. Entries omit schemes and ports. |
 | `REDMINE_API_KEY` | _(none)_ | API key. |
 | `REDMINE_OAUTH_TOKEN` | _(none)_ | OAuth2 bearer token (Doorkeeper, Redmine 6.1+). When set, sent as `Authorization: Bearer <token>` and **takes precedence over the API key**. |
 | `REDMINE_MCP_READ_ONLY` | `false` | Set `true` to disable write tools. |

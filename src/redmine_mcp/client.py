@@ -19,6 +19,7 @@ import httpx
 
 from .config import Config
 from .errors import RedmineAPIError
+from .net_guard import host_allowed
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +79,16 @@ class RedmineClient:
 
     def __init__(self, config: Config, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> None:
         self._config = config
+        if not host_allowed(config.redmine_url, config.allowed_hosts):
+            raise RedmineAPIError(
+                status_code=0,
+                body=f"host not in REDMINE_MCP_ALLOWED_HOSTS: {config.redmine_url!r}",
+                hint=(
+                    "Refusing to connect: the configured REDMINE_URL host is not in "
+                    f"REDMINE_MCP_ALLOWED_HOSTS ({', '.join(config.allowed_hosts)}). "
+                    "Add the host or unset the allow-list."
+                ),
+            )
         headers = httpx.Headers(
             {
                 "Accept": "application/json",

@@ -322,3 +322,15 @@ def test_max_response_bytes_garbage_is_zero() -> None:
 def test_max_response_bytes_negative_is_zero() -> None:
     cfg = Config.from_env(env={"REDMINE_MCP_MAX_RESPONSE_BYTES": "-1"})
     assert cfg.max_response_bytes == 0
+
+
+# ---- allowed hosts ----
+
+
+def test_allowed_hosts_default_empty() -> None:
+    assert Config.from_env(env={}).allowed_hosts == ()
+
+
+def test_allowed_hosts_parsed() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_ALLOWED_HOSTS": "trouble.example, redmine.local"})
+    assert cfg.allowed_hosts == ("trouble.example", "redmine.local")
