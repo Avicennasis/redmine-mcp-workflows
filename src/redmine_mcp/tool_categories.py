@@ -128,4 +128,11 @@ def filter_by_categories(names: Iterable[str], categories: Iterable[str]) -> set
     enabled = {c for c in categories if c}
     if not enabled:
         return set(names)
+    unknown = enabled - ALL_CATEGORIES
+    if unknown:
+        raise ValueError(
+            "unknown REDMINE_MCP_FEATURES categories: "
+            f"{', '.join(sorted(unknown))}; valid categories: "
+            f"{', '.join(sorted(ALL_CATEGORIES))}"
+        )
     return {n for n in names if TOOL_CATEGORIES.get(n) in enabled}

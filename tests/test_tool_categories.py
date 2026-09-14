@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from redmine_mcp import server
 from redmine_mcp.tool_categories import (
     ALL_CATEGORIES,
@@ -41,6 +43,11 @@ def test_filter_by_categories_keeps_enabled_only() -> None:
         "redmine_list_versions",
     ]
     assert filter_by_categories(names, ["time"]) == {"redmine_list_time_entries"}
+
+
+def test_filter_by_categories_rejects_unknown_category() -> None:
+    with pytest.raises(ValueError, match=r"unknown REDMINE_MCP_FEATURES.*issuez"):
+        filter_by_categories(["redmine_get_issue"], ["issuez"])
 
 
 def test_expected_categories_present() -> None:
