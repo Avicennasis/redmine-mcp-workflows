@@ -150,6 +150,7 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 | `REDMINE_MCP_READ_ONLY` | `false` | Set `true` to disable write tools. |
 | `REDMINE_MCP_CACHE_DIR` | platform user-cache dir | Override for the SQLite cache location. |
 | `REDMINE_MCP_CACHE_TTL` | `86400` (24h) | Per-entry TTL in seconds. |
+| `REDMINE_MCP_MAX_RESPONSE_BYTES` | `0` (unlimited) | Maximum serialized tool-response size in bytes. Oversized responses return a bounded truncation envelope. |
 | `REDMINE_HEADERS` | _(empty)_ | Extra HTTP headers, comma-separated (e.g., `Authorization: Bearer ...`). |
 | `REDMINE_MCP_ALLOWED_DIRECTORIES` | `/tmp` | Comma-separated paths that `redmine_upload_attachment` may read from. |
 | `REDMINE_MCP_HELD_FIELD_ID` | _(none)_ | Numeric id of the `Held` custom field. Pin it when the field is renamed/localized, otherwise it is matched by the exact English name. |

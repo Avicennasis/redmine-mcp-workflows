@@ -108,7 +108,7 @@ class Config:
     features: tuple[str, ...] = ()
     # Admin impersonation: send X-Redmine-Switch-User to act as another user.
     switch_user: str | None = None
-    # Cap on a serialized tool response in characters; 0 = unlimited.
+    # Cap on a serialized tool response in bytes; 0 = unlimited.
     max_response_bytes: int = 0
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
@@ -157,7 +157,9 @@ class Config:
             tool_denylist=_parse_list(e.get("REDMINE_MCP_TOOL_DENYLIST")),
             features=_parse_list(e.get("REDMINE_MCP_FEATURES")),
             switch_user=(e.get("REDMINE_MCP_SWITCH_USER") or "").strip() or None,
-            max_response_bytes=_parse_optional_int(e.get("REDMINE_MCP_MAX_RESPONSE_BYTES")) or 0,
+            max_response_bytes=max(
+                0, _parse_optional_int(e.get("REDMINE_MCP_MAX_RESPONSE_BYTES")) or 0
+            ),
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),

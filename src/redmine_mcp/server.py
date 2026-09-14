@@ -153,21 +153,49 @@ def _get_cache() -> SchemaCache:
 def _dump(value: object) -> str:
     text = json.dumps(value, indent=2, default=str)
     cap = _config.max_response_bytes if _config is not None else 0
-    if cap and len(text) > cap:
-        return json.dumps(
+    original_bytes = len(text.encode("utf-8"))
+    if cap > 0 and original_bytes > cap:
+        # The envelope itself must honor the configured byte ceiling. Build a
+        # compact JSON object, then use binary search to spend only the bytes
+        # left after metadata on a preview. json.dumps' default ensure_ascii
+        # keeps the serialized result byte-countable without splitting UTF-8.
+        def render(payload: object) -> str:
+            return json.dumps(payload, separators=(",", ":"), default=str)
+
+        candidates: list[dict[str, object]] = [
             {
                 "_truncated": True,
-                "_original_bytes": len(text.encode("utf-8")),
+                "_original_bytes": original_bytes,
                 "_limit_bytes": cap,
-                "_hint": (
-                    "Response exceeded REDMINE_MCP_MAX_RESPONSE_BYTES. Narrow the "
-                    "query (project/status filter, smaller limit) for the full result."
-                ),
-                "preview": text[:cap],
             },
-            indent=2,
-            default=str,
+            {"_truncated": True},
+            {},
+        ]
+        base = next(
+            (
+                candidate
+                for candidate in candidates
+                if len(render(candidate).encode("utf-8")) <= cap
+            ),
+            None,
         )
+        if base is None:
+            # A one-byte JSON scalar is the only valid response that can honor
+            # an extremely small positive cap.
+            return "0"
+
+        with_empty_preview = {**base, "preview": ""}
+        if len(render(with_empty_preview).encode("utf-8")) <= cap:
+            low, high = 0, len(text)
+            while low < high:
+                middle = (low + high + 1) // 2
+                candidate = render({**base, "preview": text[:middle]})
+                if len(candidate.encode("utf-8")) <= cap:
+                    low = middle
+                else:
+                    high = middle - 1
+            base["preview"] = text[:low]
+        return render(base)
     return text
 
 

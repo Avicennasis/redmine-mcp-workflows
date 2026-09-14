@@ -317,3 +317,8 @@ def test_max_response_bytes_parsed() -> None:
 def test_max_response_bytes_garbage_is_zero() -> None:
     cfg = Config.from_env(env={"REDMINE_MCP_MAX_RESPONSE_BYTES": "nope"})
     assert cfg.max_response_bytes == 0
+
+
+def test_max_response_bytes_negative_is_zero() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_MAX_RESPONSE_BYTES": "-1"})
+    assert cfg.max_response_bytes == 0
