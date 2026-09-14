@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from redmine_mcp.cache.schema_db import SchemaCache
+from redmine_mcp.errors import RedmineAPIError
 from redmine_mcp.tools import bulk
 
 
@@ -209,7 +210,7 @@ async def test_bulk_close_all_succeed(
     cache: SchemaCache,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_close(client, cache, issue_id, *, note=None):
+    async def fake_close(client, cache, issue_id, *, note=None, **_kwargs):
         return {"issue": {"id": issue_id, "status": {"name": "Closed"}}}
 
     monkeypatch.setattr(bulk.issues_module, "close_issue", fake_close)
@@ -230,7 +231,7 @@ async def test_bulk_close_records_workflow_disallowed_per_issue(
 ) -> None:
     """Workflow-blocked closures are surfaced like any other failure."""
 
-    async def fake_close(client, cache, issue_id, *, note=None):
+    async def fake_close(client, cache, issue_id, *, note=None, **_kwargs):
         if issue_id == 11:
             return {
                 "error": "workflow_transition_disallowed",
@@ -257,7 +258,7 @@ async def test_bulk_close_propagates_note_to_each(
 ) -> None:
     notes_seen: list[str | None] = []
 
-    async def fake_close(client, cache, issue_id, *, note=None):
+    async def fake_close(client, cache, issue_id, *, note=None, **_kwargs):
         notes_seen.append(note)
         return {"issue": {"id": issue_id}}
 
@@ -277,7 +278,7 @@ async def test_bulk_close_omits_note_when_empty(
 ) -> None:
     notes_seen: list[str | None] = []
 
-    async def fake_close(client, cache, issue_id, *, note=None):
+    async def fake_close(client, cache, issue_id, *, note=None, **_kwargs):
         notes_seen.append(note)
         return {"issue": {"id": issue_id}}
 
@@ -580,3 +581,64 @@ async def test_bulk_create_forwards_optional_fields(
     assert forwarded_kwargs["custom_fields"] == [{"id": 9, "value": "x"}]
     assert "description" not in forwarded_kwargs
     assert "assigned_to_id" not in forwarded_kwargs
+
+
+class _PrecheckErrorClient:
+    """Raises a scripted error on the duplicate pre-check GET."""
+
+    def __init__(self, err: Exception | None = None, payload: Any = None) -> None:
+        self._err = err
+        self._payload = payload
+
+    async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        if self._err is not None:
+            raise self._err
+        return self._payload
+
+
+async def test_bulk_create_precheck_error_refuses_to_create(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient pre-check failure must not be read as 'no duplicate'."""
+    created: list[dict[str, Any]] = []
+
+    async def fake_create(client, cache, **kwargs):
+        created.append(kwargs)
+        return {"issue": {"id": 1, "subject": kwargs["subject"]}}
+
+    monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
+    client = _PrecheckErrorClient(RedmineAPIError(status_code=500, body={"errors": ["boom"]}))
+    result = await bulk.bulk_create_issues(
+        client,
+        cache,
+        issues=[{"project": "p", "tracker": "t", "subject": "s"}],
+        on_duplicate="skip",
+        pacing_seconds=0,
+    )
+    assert result["summary"] == {"total": 1, "created": 0, "skipped": 0, "failed": 1}
+    assert result["results"][0]["status"] == "failed"
+    assert created == []
+
+
+async def test_bulk_create_precheck_404_is_treated_as_no_duplicate(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[dict[str, Any]] = []
+
+    async def fake_create(client, cache, **kwargs):
+        created.append(kwargs)
+        return {"issue": {"id": 2, "subject": kwargs["subject"]}}
+
+    monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
+    client = _PrecheckErrorClient(RedmineAPIError(status_code=404, body={"errors": ["gone"]}))
+    result = await bulk.bulk_create_issues(
+        client,
+        cache,
+        issues=[{"project": "p", "tracker": "t", "subject": "s"}],
+        on_duplicate="skip",
+        pacing_seconds=0,
+    )
+    assert result["summary"]["created"] == 1
+    assert len(created) == 1

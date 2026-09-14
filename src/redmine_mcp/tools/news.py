@@ -17,11 +17,12 @@ from typing import Any
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import RedmineAPIError
+from ..schema import project as project_schema
 
 
 async def list_news(
     client: RedmineClient,
-    cache: SchemaCache,  # noqa: ARG001 — kept for signature parity
+    cache: SchemaCache,
     *,
     project: int | str | None = None,
     limit: int = 25,
@@ -35,7 +36,11 @@ async def list_news(
         limit: Redmine page size (capped server-side at 100).
         offset: skip the first N results.
     """
-    path = "/news.json" if project is None else f"/projects/{project}/news.json"
+    if project is None:
+        path = "/news.json"
+    else:
+        segment = await project_schema.project_path_segment(client, cache, project)
+        path = f"/projects/{segment}/news.json"
     params: dict[str, Any] = {"limit": limit, "offset": offset}
 
     try:
@@ -57,7 +62,7 @@ async def list_news(
 
 async def create_news(
     client: RedmineClient,
-    cache: SchemaCache,  # noqa: ARG001
+    cache: SchemaCache,
     *,
     project: int | str,
     title: str,
@@ -78,6 +83,8 @@ async def create_news(
             "hint": "Field 'title' is required for create_news.",
         }
 
+    segment = await project_schema.project_path_segment(client, cache, project)
+
     body: dict[str, Any] = {"title": title}
     if summary is not None:
         body["summary"] = summary
@@ -86,7 +93,7 @@ async def create_news(
 
     try:
         resp = await client.post(
-            f"/projects/{project}/news.json",
+            f"/projects/{segment}/news.json",
             json={"news": body},
         )
     except RedmineAPIError as e:
@@ -97,7 +104,7 @@ async def create_news(
     if news_item is None:
         try:
             refetch = await client.get(
-                f"/projects/{project}/news.json",
+                f"/projects/{segment}/news.json",
                 params={"limit": 1},
             )
             entries = refetch.get("news", []) if isinstance(refetch, dict) else []

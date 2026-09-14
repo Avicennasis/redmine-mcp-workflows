@@ -101,6 +101,46 @@ def test_is_disallowed_picks_most_recent_when_multiple_roles(cache: SchemaCache)
     assert hit.role_id == 4  # later observation wins
 
 
+def test_is_disallowed_allowed_role_wins_over_disallowed_role(cache: SchemaCache) -> None:
+    """Redmine is role-union: one role allowing the transition is enough.
+
+    A ``disallowed`` observation for role 3 must not block a user who also
+    holds role 4, which has been observed allowing the same transition.
+    """
+    cache.record_workflow_observation(
+        tracker_id=1, role_id=3, from_status_id=1, to_status_id=5, outcome="disallowed"
+    )
+    cache.record_workflow_observation(
+        tracker_id=1, role_id=4, from_status_id=1, to_status_id=5, outcome="allowed"
+    )
+    assert (
+        transitions.is_disallowed(
+            cache, tracker_id=1, role_ids=[3, 4], from_status_id=1, to_status_id=5
+        )
+        is None
+    )
+
+
+def test_is_disallowed_allowed_wins_even_when_disallowed_is_newer(cache: SchemaCache) -> None:
+    """A later disallowed observation on one role must not outweigh an allowed one.
+
+    Ordering is irrelevant under role-union: role 4's ``allowed`` proves the
+    user may make the transition even though role 3 failed more recently.
+    """
+    cache.record_workflow_observation(
+        tracker_id=1, role_id=4, from_status_id=1, to_status_id=5, outcome="allowed"
+    )
+    cache.record_workflow_observation(
+        tracker_id=1, role_id=3, from_status_id=1, to_status_id=5, outcome="disallowed"
+    )
+    assert (
+        transitions.is_disallowed(
+            cache, tracker_id=1, role_ids=[3, 4], from_status_id=1, to_status_id=5
+        )
+        is None
+    )
+
+
 def test_allowed_next_returns_observed_to_states(cache: SchemaCache) -> None:
     cache.record_workflow_observation(
         tracker_id=1, role_id=4, from_status_id=1, to_status_id=2, outcome="allowed"
@@ -479,3 +519,36 @@ def test_check_held_gate_held_until_alone_not_a_hold() -> None:
     }
     result = field_validators.check_held_gate(issue)
     assert result is None
+
+
+def test_check_held_gate_matches_by_id_when_configured() -> None:
+    """A pinned field id works even when the field is renamed/localized."""
+    issue = {
+        "id": 11,
+        "custom_fields": [{"id": 2, "name": "Wartend", "value": "upstream patch"}],
+    }
+    result = field_validators.check_held_gate(issue, held_field_id=2)
+    assert isinstance(result, IssueHeld)
+    assert result.as_dict()["held_reason"] == "upstream patch"
+
+
+def test_check_held_gate_ignores_name_when_id_configured() -> None:
+    """With an id configured, a same-named field at a different id is not it."""
+    issue = {
+        "id": 12,
+        "custom_fields": [{"id": 99, "name": "Held", "value": "wrong field"}],
+    }
+    assert field_validators.check_held_gate(issue, held_field_id=2) is None
+
+
+def test_check_held_gate_pinned_held_until_field() -> None:
+    issue = {
+        "id": 13,
+        "custom_fields": [
+            {"id": 2, "name": "Held", "value": "reason"},
+            {"id": 3, "name": "Held Until", "value": "2026-06-01"},
+        ],
+    }
+    result = field_validators.check_held_gate(issue, held_field_id=2, held_until_field_id=3)
+    assert isinstance(result, IssueHeld)
+    assert result.as_dict()["held_until"] == "2026-06-01"

@@ -45,11 +45,22 @@ def is_disallowed(
     from_status_id: int,
     to_status_id: int,
 ) -> DisallowedHit | None:
-    """Return a hit if any role observed this transition as disallowed.
+    """Return a hit if this transition is disallowed for *every* known role.
 
-    The most-recent observation across roles wins. Returns ``None`` if no
-    role has any observation (success or failure) for this transition —
-    the caller should let the API decide.
+    Redmine grants a transition when **any** role in the user's role set
+    allows it (role-union — see the module docstring). So an ``allowed``
+    observation for *any* matching role means the transition is permitted
+    and this function returns ``None`` immediately, regardless of
+    ``disallowed`` observations recorded for other roles.
+
+    Ignoring that union is what made the cache over-block: ``record_outcome``
+    writes a ``disallowed`` row for *every* role of a multi-role user when a
+    single PUT 422s, so an ``allowed`` row for one role could be outweighed
+    by a stale failure on another.
+
+    Among the remaining all-disallowed roles, the most-recent observation
+    wins. Returns ``None`` when no role has any observation for this
+    transition — the caller should let the API decide.
     """
     best: DisallowedHit | None = None
     for rid in _role_set(role_ids):
@@ -59,8 +70,10 @@ def is_disallowed(
             from_status_id=from_status_id,
             to_status_id=to_status_id,
         )
-        if obs is None or obs["outcome"] != "disallowed":
+        if obs is None:
             continue
+        if obs["outcome"] == "allowed":
+            return None
         if best is None or obs["observed_at"] > best.observed_at:
             best = DisallowedHit(
                 role_id=rid,

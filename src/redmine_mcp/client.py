@@ -21,9 +21,31 @@ log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_PAGE_SIZE = 100  # Redmine's max per page
-RETRYABLE_STATUS = frozenset({500, 502, 503, 504})
+
+# Methods that can be safely re-sent after an ambiguous failure. Retrying a
+# POST/PUT/DELETE on a 5xx or a transport error can duplicate a write that
+# actually committed before the response was lost, so those are single-shot.
+IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# 429 is retryable for *any* method: the server rejected the request without
+# processing it, so re-sending cannot duplicate a write.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 MAX_RETRIES = 2  # total = 3 attempts
 RETRY_BACKOFF_SECONDS = 0.5
+MAX_RETRY_AFTER_SECONDS = 60.0
+
+
+def _retry_delay(resp: httpx.Response | None, attempt: int) -> float:
+    """Delay before the next attempt, honoring ``Retry-After`` when present."""
+    if resp is not None:
+        raw = resp.headers.get("Retry-After")
+        if raw:
+            try:
+                return min(float(raw), MAX_RETRY_AFTER_SECONDS)
+            except ValueError:
+                # HTTP-date form — fall back to exponential backoff.
+                pass
+    return RETRY_BACKOFF_SECONDS * (2**attempt)
 
 
 class RedmineClient:
@@ -71,9 +93,16 @@ class RedmineClient:
         content: bytes | None = None,
         headers: dict[str, str] | None = None,
         binary: bool = False,
+        idempotent: bool | None = None,
     ) -> Any:
+        # Retry only when re-sending cannot duplicate a committed write.
+        # Callers may override for a known-safe non-idempotent method.
+        if idempotent is None:
+            idempotent = method.upper() in IDEMPOTENT_METHODS
+
         last_exc: Exception | None = None
         for attempt in range(MAX_RETRIES + 1):
+            resp: httpx.Response | None = None
             try:
                 resp = await self._client.request(
                     method,
@@ -85,8 +114,8 @@ class RedmineClient:
                 )
             except httpx.TransportError as e:
                 last_exc = e
-                if attempt < MAX_RETRIES:
-                    await asyncio.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+                if idempotent and attempt < MAX_RETRIES:
+                    await asyncio.sleep(_retry_delay(None, attempt))
                     continue
                 raise RedmineAPIError(
                     status_code=0,
@@ -94,9 +123,15 @@ class RedmineClient:
                     hint="Network error reaching Redmine.",
                 ) from e
 
-            if resp.status_code in RETRYABLE_STATUS and attempt < MAX_RETRIES:
+            if (
+                resp.status_code in RETRYABLE_STATUS
+                and attempt < MAX_RETRIES
+                # 429 means the request was rejected unprocessed, so it is
+                # safe to re-send even for POST/PUT/DELETE.
+                and (idempotent or resp.status_code == 429)
+            ):
                 log.debug("retrying %s %s (status %s)", method, path, resp.status_code)
-                await asyncio.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+                await asyncio.sleep(_retry_delay(resp, attempt))
                 continue
 
             if not (200 <= resp.status_code < 300):
@@ -159,9 +194,25 @@ class RedmineClient:
         """GET a URL and return the raw response body — for attachment downloads.
 
         Path may be relative (joined to ``Config.redmine_url``) or an absolute
-        URL on the same host. Auth headers and retry behavior inherit from
+        URL **on the same host**. Auth headers and retry behavior inherit from
         :meth:`_request`.
+
+        The same-host check exists because the caller may be handing us a URL
+        that came from an API response: an absolute URL pointing elsewhere
+        would otherwise receive this client's auth headers.
         """
+        base = httpx.URL(self._config.redmine_url)
+        resolved = base.join(path)
+        if resolved.host != base.host:
+            raise RedmineAPIError(
+                status_code=0,
+                body=f"refused cross-host binary fetch: {path!r}",
+                hint=(
+                    "get_binary only fetches from the configured Redmine host "
+                    f"({base.host!r}); refusing to send credentials to "
+                    f"{resolved.host!r}."
+                ),
+            )
         return await self._request("GET", path, binary=True)
 
     async def paginate(

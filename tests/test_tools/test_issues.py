@@ -1279,6 +1279,22 @@ async def test_search_issues_caps_limit_at_100(cache: SchemaCache) -> None:
     assert sent["limit"] == 100
 
 
+async def test_search_issues_reports_applied_limit(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, limit=500)
+    assert result["limit"] == 100  # not the requested 500
+
+
+async def test_search_issues_clamps_negative_pagination(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, limit=-5, offset=-9)
+    sent = client.calls[-1][2]
+    assert sent["limit"] == 1
+    assert sent["offset"] == 0
+    assert result["limit"] == 1
+    assert result["offset"] == 0
+
+
 # ---- custom-field filtering + sort ----------------------------------------
 
 
@@ -1425,3 +1441,29 @@ async def test_apply_held_does_not_truncate_a_long_reason(cache: SchemaCache) ->
     out = await issues._apply_held(FakeClient({}), cache, None, reason, None)
     assert out is not None
     assert len(next(e for e in out if e["id"] == 2)["value"]) == 500
+
+
+async def test_apply_held_pinned_ids_skip_discovery(cache: SchemaCache) -> None:
+    """Configured ids are used directly — no /custom_fields.json round-trip."""
+    client = FakeClient({})
+    out = await issues._apply_held(
+        client,
+        cache,
+        None,
+        "reason",
+        "2026-06-01",
+        held_field_id=2,
+        held_until_field_id=3,
+    )
+    assert next(e for e in out if e["id"] == 2)["value"] == "reason"
+    assert next(e for e in out if e["id"] == 3)["value"] == "2026-06-01"
+    assert client.calls == []
+
+
+async def test_apply_difficulty_pinned_id_skips_discovery(cache: SchemaCache) -> None:
+    client = FakeClient({})
+    out = await issues._apply_difficulty(
+        client, cache, None, None, default_fill=True, difficulty_field_id=7
+    )
+    assert next(e for e in out if e["id"] == 7)["value"] == issues.DIFFICULTY_DEFAULT_VALUE
+    assert client.calls == []

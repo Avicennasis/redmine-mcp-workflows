@@ -32,6 +32,7 @@ from typing import Any
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import RedmineAPIError
+from ..schema import project as project_schema
 from . import issues as issues_module
 
 ALLOWED_STATUSES: tuple[str, ...] = ("open", "locked", "closed")
@@ -103,12 +104,13 @@ def _check_date(due_date: str | None) -> dict[str, Any] | None:
 
 async def list_versions(
     client: RedmineClient,
-    cache: SchemaCache,  # noqa: ARG001 — kept for signature parity
+    cache: SchemaCache,
     project: int | str,
 ) -> dict[str, Any]:
     """List all versions defined on a project."""
+    segment = await project_schema.project_path_segment(client, cache, project)
     try:
-        payload = await client.get(f"/projects/{project}/versions.json")
+        payload = await client.get(f"/projects/{segment}/versions.json")
     except RedmineAPIError as e:
         return e.as_structured()
     items = payload.get("versions", []) if isinstance(payload, dict) else []
@@ -143,7 +145,7 @@ async def get_version(
 
 async def create_version(
     client: RedmineClient,
-    cache: SchemaCache,  # noqa: ARG001
+    cache: SchemaCache,
     *,
     project: int | str,
     name: str,
@@ -163,6 +165,8 @@ async def create_version(
     if (err := _check_date(due_date)) is not None:
         return err
 
+    segment = await project_schema.project_path_segment(client, cache, project)
+
     body: dict[str, Any] = {"name": name}
     if description is not None:
         body["description"] = description
@@ -177,7 +181,7 @@ async def create_version(
 
     try:
         resp = await client.post(
-            f"/projects/{project}/versions.json",
+            f"/projects/{segment}/versions.json",
             json={"version": body},
         )
     except RedmineAPIError as e:

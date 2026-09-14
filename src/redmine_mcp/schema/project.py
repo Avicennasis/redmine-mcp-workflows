@@ -6,13 +6,22 @@ and caches the result.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
+from urllib.parse import quote
 
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import RedmineAPIError
 
 _INCLUDE = "trackers,issue_categories,enabled_modules"
+
+
+def _try_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 async def describe_project(
@@ -125,3 +134,71 @@ async def list_projects(
         "offset": offset,
         "filtered_locally": True,
     }
+
+
+async def resolve_project_id(
+    client: RedmineClient,
+    cache: SchemaCache,
+    ident: int | str,
+) -> int | None:
+    """Resolve a project reference (id, slug, or display name) to a numeric id.
+
+    Lookup order:
+      1. Numeric id (int or stringy int) → return as-is.
+      2. Cache by identifier slug.
+      3. :func:`describe_project` (fetches by slug, caches on success).
+      4. Cache by display name (case-insensitive) — handles the natural
+         get→create round-trip where callers pass ``project.name`` from a
+         prior issue response.
+      5. Refresh the project list and try the display-name match again.
+
+    Returns ``None`` when no path resolves; callers translate that into a
+    structured ``project_not_found`` error.
+    """
+    if isinstance(ident, int):
+        return ident
+    as_int = _try_int(ident)
+    if as_int is not None:
+        return as_int
+    ident_str = str(ident)
+    cached = cache.get_project(ident_str)
+    if cached is not None:
+        return _try_int(cached.get("id"))
+    fetched = await describe_project(client, cache, ident_str)
+    if isinstance(fetched, dict) and not fetched.get("error"):
+        return _try_int(fetched.get("id"))
+    # Slug lookup failed — try display name (cached, then refreshed list).
+    by_name = cache.get_project_by_name(ident_str)
+    if by_name is not None:
+        return _try_int(by_name.get("id"))
+    listing = await list_projects(client, limit=100)
+    target = ident_str.strip().lower()
+    for project in listing.get("projects", []):
+        if str(project.get("name", "")).strip().lower() == target:
+            with contextlib.suppress(KeyError, TypeError, ValueError):
+                cache.put_project(
+                    project_id=int(project["id"]),
+                    identifier=project.get("identifier", project["name"]),
+                    schema=project,
+                )
+            return _try_int(project.get("id"))
+    return None
+
+
+async def project_path_segment(
+    client: RedmineClient,
+    cache: SchemaCache,
+    ident: int | str,
+) -> str:
+    """Return a safe URL path segment for a project reference.
+
+    Prefers a resolved numeric id (Redmine's ``/projects/:id`` accepts an id
+    or an identifier slug). Falls back to the percent-encoded original so a
+    value such as ``"1?status_id=*"`` cannot inject URL structure — Redmine
+    IGNORES unknown filter params rather than rejecting them, so an
+    unescaped ``?`` would silently change the query.
+    """
+    resolved = await resolve_project_id(client, cache, ident)
+    if resolved is not None:
+        return str(resolved)
+    return quote(str(ident), safe="")

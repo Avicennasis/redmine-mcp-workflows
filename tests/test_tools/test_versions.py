@@ -168,7 +168,7 @@ async def test_create_version_minimal(cache: SchemaCache) -> None:
         name="v1.2",
     )
     assert result["version"]["id"] == 5
-    payload = client.calls[0][2]
+    payload = next(c[2] for c in client.calls if c[0] == "POST")
     assert payload == {"version": {"name": "v1.2"}}
 
 
@@ -191,7 +191,7 @@ async def test_create_version_with_all_optionals(cache: SchemaCache) -> None:
         sharing="descendants",
         wiki_page_title="ReleaseNotes-v2",
     )
-    sent = client.calls[0][2]["version"]
+    sent = next(c[2] for c in client.calls if c[0] == "POST")["version"]
     assert sent["name"] == "v2.0"
     assert sent["description"] == "Major release"
     assert sent["status"] == "open"

@@ -145,21 +145,37 @@ HELD_FIELD_NAME = "Held"
 HELD_UNTIL_FIELD_NAME = "Held Until"
 
 
-def check_held_gate(issue: dict[str, Any]) -> IssueHeld | None:
+def _matches_field(cf: dict[str, Any], field_id: int | None, name: str) -> bool:
+    """Match a custom-field entry by id when configured, else by exact name."""
+    if field_id is not None:
+        return cf.get("id") == field_id
+    return cf.get("name") == name
+
+
+def check_held_gate(
+    issue: dict[str, Any],
+    *,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
+) -> IssueHeld | None:
     """Return ``IssueHeld`` if the issue has a non-empty Held custom field.
 
     The caller decides when to invoke this — typically only when the
     target status is a closed status.
+
+    ``held_field_id`` / ``held_until_field_id`` may pin the fields by id
+    (``REDMINE_MCP_HELD_FIELD_ID`` / ``..._HELD_UNTIL_FIELD_ID``). When unset
+    the fields are matched by their exact English names, which a renamed or
+    localized Redmine will not satisfy.
     """
     custom_fields = issue.get("custom_fields") or []
     held_value: str = ""
     held_until_value: str | None = None
 
     for cf in custom_fields:
-        name = cf.get("name", "")
-        if name == HELD_FIELD_NAME:
+        if _matches_field(cf, held_field_id, HELD_FIELD_NAME):
             held_value = (cf.get("value") or "").strip()
-        elif name == HELD_UNTIL_FIELD_NAME:
+        elif _matches_field(cf, held_until_field_id, HELD_UNTIL_FIELD_NAME):
             held_until_value = (cf.get("value") or "").strip() or None
 
     if not held_value:

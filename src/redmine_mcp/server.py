@@ -599,6 +599,7 @@ async def redmine_create_issue(
         return _dump(cf_err)
 
     async def factory(client, cache):
+        cfg = _get_config()
         return await issues.create_issue(
             client,
             cache,
@@ -616,6 +617,9 @@ async def redmine_create_issue(
             start_date=sd,
             done_ratio=dr,
             custom_fields=cf,
+            difficulty_field_id=cfg.difficulty_field_id,
+            held_field_id=cfg.held_field_id,
+            held_until_field_id=cfg.held_until_field_id,
         )
 
     return await _wrap(factory, write=True)
@@ -719,6 +723,7 @@ async def redmine_update_issue(
         return _dump(cf_err)
 
     async def factory(client, cache):
+        cfg = _get_config()
         return await issues.update_issue(
             client,
             cache,
@@ -737,6 +742,9 @@ async def redmine_update_issue(
             done_ratio=dr,
             fixed_version_id=fv,
             custom_fields=cf,
+            difficulty_field_id=cfg.difficulty_field_id,
+            held_field_id=cfg.held_field_id,
+            held_until_field_id=cfg.held_until_field_id,
         )
 
     return await _wrap(factory, write=True)
@@ -760,7 +768,15 @@ async def redmine_close_issue(issue_id: int, note: str = "") -> str:
     n = note if note else None
 
     async def factory(client, cache):
-        return await issues.close_issue(client, cache, issue_id, note=n)
+        cfg = _get_config()
+        return await issues.close_issue(
+            client,
+            cache,
+            issue_id,
+            note=n,
+            held_field_id=cfg.held_field_id,
+            held_until_field_id=cfg.held_until_field_id,
+        )
 
     return await _wrap(factory, write=True)
 
@@ -1469,6 +1485,7 @@ async def redmine_bulk_create_issues(
     """
 
     async def factory(client, cache):
+        cfg = _get_config()
         return await bulk.bulk_create_issues(
             client,
             cache,
@@ -1476,6 +1493,7 @@ async def redmine_bulk_create_issues(
             on_duplicate=on_duplicate,
             pacing_seconds=pacing_seconds,
             stop_on_error=stop_on_error,
+            difficulty_field_id=cfg.difficulty_field_id,
         )
 
     return await _wrap(factory, write=True)
@@ -1556,6 +1574,7 @@ async def redmine_bulk_update_issues(
     dr = done_ratio if done_ratio != -1 else None
 
     async def factory(client, cache):
+        cfg = _get_config()
         return await bulk.bulk_update_issues(
             client,
             cache,
@@ -1574,6 +1593,9 @@ async def redmine_bulk_update_issues(
             start_date=sd,
             done_ratio=dr,
             stop_on_error=stop_on_error,
+            difficulty_field_id=cfg.difficulty_field_id,
+            held_field_id=cfg.held_field_id,
+            held_until_field_id=cfg.held_until_field_id,
         )
 
     return await _wrap(factory, write=True)
@@ -1599,12 +1621,15 @@ async def redmine_bulk_close(
     n = note if note else None
 
     async def factory(client, cache):
+        cfg = _get_config()
         return await bulk.bulk_close(
             client,
             cache,
             issue_ids=issue_ids,
             note=n,
             stop_on_error=stop_on_error,
+            held_field_id=cfg.held_field_id,
+            held_until_field_id=cfg.held_until_field_id,
         )
 
     return await _wrap(factory, write=True)
