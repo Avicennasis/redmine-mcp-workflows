@@ -19,6 +19,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     "redmine_delete_issue": "issues",
     "redmine_search_issues": "issues",
     "redmine_my_issues": "issues",
+    "redmine_list_child_issues": "issues",
     "redmine_bulk_close": "issues",
     "redmine_bulk_create_issues": "issues",
     "redmine_bulk_update_issues": "issues",

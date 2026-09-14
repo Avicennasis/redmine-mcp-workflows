@@ -1199,6 +1199,40 @@ async def redmine_my_issues(status: str = "open", limit: int = 25, offset: int =
 
 
 @mcp.tool()
+async def redmine_list_child_issues(
+    issue_id: int,
+    assignee: str = "",
+    status: str = "open",
+    limit: int = 25,
+    offset: int = 0,
+) -> str:
+    """List an issue's child tickets, optionally filtered by assignee.
+
+    Args:
+        issue_id: parent issue id.
+        assignee: numeric user id or ``"me"``; empty for all assignees.
+        status: same values as ``search_issues`` (default ``"open"``).
+        limit: page size (capped at 100).
+        offset: skip the first N results.
+    """
+    assigned: int | str | None = assignee if assignee else None
+    st: int | str | None = status if status else None
+
+    async def factory(client, cache):
+        return await issues.search_issues(
+            client,
+            cache,
+            parent_id=issue_id,
+            assigned_to=assigned,
+            status=st,
+            limit=limit,
+            offset=offset,
+        )
+
+    return await _wrap(factory)
+
+
+@mcp.tool()
 async def redmine_today_time_entries(limit: int = 25, offset: int = 0) -> str:
     """Time entries logged today (server-local date).
 
