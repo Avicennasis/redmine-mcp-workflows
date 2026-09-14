@@ -587,3 +587,88 @@ async def test_download_handles_malformed_metadata(cache: SchemaCache, tmp_path:
         allowed_directories=(tmp_path,),
     )
     assert result["error"] == "attachment_metadata_malformed"
+
+
+# ---------------------------------------------------------------------
+# view_attachment (inline images)
+# ---------------------------------------------------------------------
+
+
+def test_image_format_mapping() -> None:
+    assert attachments.image_format("image/png") == "png"
+    assert attachments.image_format("image/jpeg; charset=binary") == "jpeg"
+    assert attachments.image_format("application/pdf") is None
+    assert attachments.image_format(None) is None
+
+
+async def test_view_attachment_returns_bytes_for_image(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/attachments/5.json"): {
+                "attachment": {
+                    "id": 5,
+                    "filename": "shot.png",
+                    "filesize": 3,
+                    "content_type": "image/png",
+                }
+            },
+            ("GET_BIN", "/attachments/download/5/shot.png"): b"PNG",
+        }
+    )
+    result = await attachments.view_attachment(client, cache, 5)
+    assert result["image"] == b"PNG"
+    assert result["format"] == "png"
+
+
+async def test_view_attachment_rejects_non_image(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/attachments/5.json"): {
+                "attachment": {
+                    "id": 5,
+                    "filename": "doc.pdf",
+                    "filesize": 10,
+                    "content_type": "application/pdf",
+                }
+            },
+        }
+    )
+    result = await attachments.view_attachment(client, cache, 5)
+    assert result["error"] == "attachment_not_image"
+    assert not any(c[0] == "GET_BIN" for c in client.calls)
+
+
+async def test_view_attachment_rejects_oversize_from_metadata(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/attachments/5.json"): {
+                "attachment": {
+                    "id": 5,
+                    "filename": "big.png",
+                    "filesize": 10_000,
+                    "content_type": "image/png",
+                }
+            },
+        }
+    )
+    result = await attachments.view_attachment(client, cache, 5, max_bytes=1000)
+    assert result["error"] == "attachment_too_large"
+    assert not any(c[0] == "GET_BIN" for c in client.calls)
+
+
+async def test_view_attachment_rejects_oversize_after_download(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/attachments/5.json"): {
+                "attachment": {
+                    "id": 5,
+                    "filename": "big.png",
+                    "filesize": 3,
+                    "content_type": "image/png",
+                }
+            },
+            ("GET_BIN", "/attachments/download/5/big.png"): b"x" * 2000,
+        }
+    )
+    result = await attachments.view_attachment(client, cache, 5, max_bytes=1000)
+    assert result["error"] == "attachment_too_large"
