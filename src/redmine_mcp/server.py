@@ -2983,6 +2983,48 @@ async def _startup_healthcheck(cfg: Config) -> None:
         log.error("Redmine startup health check failed: %s", result.get("error", result))
 
 
+@mcp.prompt()
+def redmine_bug_triage(report: str) -> str:
+    """Triage a bug report without creating duplicates.
+
+    Produces a step-by-step plan an agent can follow with the redmine_* tools.
+    """
+    return (
+        "Triage this bug report.\n\n"
+        f"Report:\n{report}\n\n"
+        "Steps:\n"
+        "1. Search first: redmine_search_issues(query=<distinctive keywords from "
+        "the report>). Try the error text and the affected component name.\n"
+        "2. If an open ticket matches, read it with redmine_get_issue and add the "
+        "new evidence with redmine_add_comment. Do not create a duplicate.\n"
+        "3. If nothing matches, create one: redmine_create_issue(project=..., "
+        "tracker='Bug', subject='<concise>', description='<report + repro + "
+        "evidence>').\n"
+        "4. Link related tickets with redmine_add_relation ('relates' or "
+        "'blocks').\n"
+        "Ground every claim in tool output: never cite a ticket id you did not "
+        "fetch."
+    )
+
+
+@mcp.prompt()
+def redmine_feature_spec(request: str) -> str:
+    """Turn a vague feature request into a structured, buildable spec."""
+    return (
+        "Convert this request into a structured feature spec.\n\n"
+        f"Request:\n{request}\n\n"
+        "Produce:\n"
+        "- Problem / motivation (what is painful today).\n"
+        "- Scope: the smallest solid form, plus explicit non-goals.\n"
+        "- Acceptance criteria as a checklist.\n"
+        "- Dependencies / unknowns, and what needs human input.\n"
+        "- Verification plan (tests, smoke checks).\n\n"
+        "Check the codebase for an existing implementation before proposing new "
+        "work: the feature may already exist under another name. When unsure "
+        "whether something is built, say so rather than asserting it."
+    )
+
+
 def apply_tool_filter(config: Config | None = None) -> set[str]:
     """Remove tools excluded by ``REDMINE_MCP_DISABLED_TOOLS`` from the server.
 
