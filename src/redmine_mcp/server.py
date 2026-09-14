@@ -2774,10 +2774,15 @@ def apply_tool_filter(config: Config | None = None) -> set[str]:
     """
     cfg = config or _get_config()
     registered = set(mcp._tool_manager._tools)  # noqa: SLF001 — no public name iterator
-    allowed = filter_tool_names(registered, disabled=cfg.disabled_tools)
+    allowed = filter_tool_names(
+        registered,
+        disabled=cfg.disabled_tools,
+        allowlist=cfg.tool_allowlist,
+        denylist=cfg.tool_denylist,
+    )
     for name in sorted(registered - allowed):
         mcp.remove_tool(name)
-        log.info("tool disabled by REDMINE_MCP_DISABLED_TOOLS: %s", name)
+        log.info("tool filtered out at startup: %s", name)
     return allowed
 
 
