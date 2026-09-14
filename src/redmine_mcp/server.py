@@ -23,6 +23,7 @@ string and the ``issubclass`` check raises ``TypeError``. Annotations on
 local variables still use PEP 604 union syntax (Python 3.10+ native).
 """
 
+import asyncio
 import atexit
 import contextlib
 import datetime
@@ -48,6 +49,7 @@ from .tools import (
     files,
     forums,
     groups,
+    health,
     issue_categories,
     issue_statuses,
     issues,
@@ -2814,6 +2816,41 @@ async def redmine_request(
     return await _wrap(factory, write=is_write)
 
 
+@mcp.tool()
+async def redmine_health() -> str:
+    """Validate Redmine connectivity and credentials.
+
+    Fetches the current account; ``status: ok`` means the URL is reachable
+    and the credential was accepted. Returns a structured error otherwise.
+    """
+
+    async def factory(client, cache):
+        return await health.health(client, cache)
+
+    return await _wrap(factory)
+
+
+async def _startup_healthcheck(cfg: Config) -> None:
+    """Probe Redmine once at startup and log a clear result.
+
+    Never raises: a broken backend should not stop the stdio server from
+    starting (clients would see a dead process instead of a diagnosable
+    tool result), but it must not be silent either.
+    """
+    try:
+        async with RedmineClient(cfg) as client:
+            result = await health.health(client)
+    except Exception as e:  # noqa: BLE001 — startup must not crash the server
+        log.error("Redmine startup health check failed: %s", e)
+        return
+    if result.get("status") == "ok":
+        log.info(
+            "Redmine startup health check OK (account=%s)", result.get("account", {}).get("login")
+        )
+    else:
+        log.error("Redmine startup health check failed: %s", result.get("error", result))
+
+
 def apply_tool_filter(config: Config | None = None) -> set[str]:
     """Remove tools excluded by ``REDMINE_MCP_DISABLED_TOOLS`` from the server.
 
@@ -2839,6 +2876,9 @@ def main() -> None:
     """Console-script entry point. Runs the MCP server over stdio."""
     cfg = _get_config()
     apply_tool_filter(cfg)
+    # Skip when already inside a running loop (e.g. imported by a harness).
+    with contextlib.suppress(RuntimeError):
+        asyncio.run(_startup_healthcheck(cfg))
     mcp.run()
 
 
