@@ -250,6 +250,8 @@ async def _wrap(coro_factory, *, write: bool = False):
         try:
             async with RedmineClient(cfg) as client:
                 result = await coro_factory(client, cache)
+            if isinstance(result, dict) and "error" in result:
+                failed = True
             return _dump(result)
         except RedmineAPIError as e:
             failed = True
@@ -2871,9 +2873,7 @@ async def redmine_metrics(reset: bool = False) -> str:
     Aggregated per tool for the life of the process. Pass ``reset=True``
     to clear the counters after reading.
     """
-    snapshot = METRICS.snapshot()
-    if reset:
-        METRICS.reset()
+    snapshot = METRICS.snapshot(reset=reset)
     return _dump(snapshot)
 
 

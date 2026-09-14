@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from redmine_mcp import server
 from redmine_mcp.metrics import Metrics
 
 
@@ -29,3 +32,34 @@ def test_reset_clears() -> None:
     m.record("x", 0.1, error=True)
     m.reset()
     assert m.snapshot() == {"total_calls": 0, "total_errors": 0, "tools": {}}
+
+
+def test_snapshot_reset_returns_then_atomically_clears() -> None:
+    m = Metrics()
+    m.record("x", 0.1, error=True)
+    before = m.snapshot(reset=True)
+    assert before["total_calls"] == 1
+    assert before["total_errors"] == 1
+    assert m.snapshot() == {"total_calls": 0, "total_errors": 0, "tools": {}}
+
+
+async def test_wrap_counts_structured_error_as_error(monkeypatch) -> None:
+    metrics = Metrics()
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc) -> None:
+            return None
+
+    monkeypatch.setattr(server, "METRICS", metrics)
+    monkeypatch.setattr(server, "_get_config", lambda: SimpleNamespace(read_only=False))
+    monkeypatch.setattr(server, "_get_cache", object)
+    monkeypatch.setattr(server, "RedmineClient", lambda _cfg: FakeClient())
+
+    async def factory(_client, _cache):
+        return {"error": "validation_failed"}
+
+    await server._wrap(factory)
+    assert metrics.snapshot()["total_errors"] == 1

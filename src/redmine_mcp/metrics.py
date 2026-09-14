@@ -29,7 +29,7 @@ class Metrics:
             if seconds > self._max_seconds.get(name, 0.0):
                 self._max_seconds[name] = seconds
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self, *, reset: bool = False) -> dict[str, Any]:
         with self._lock:
             tools: dict[str, dict[str, Any]] = {}
             for name, calls in sorted(self._calls.items()):
@@ -42,11 +42,17 @@ class Metrics:
                     "avg_ms": round((total / calls) * 1000, 3) if calls else 0.0,
                     "max_ms": round(self._max_seconds.get(name, 0.0) * 1000, 3),
                 }
-            return {
+            snapshot = {
                 "total_calls": sum(self._calls.values()),
                 "total_errors": sum(self._errors.values()),
                 "tools": tools,
             }
+            if reset:
+                self._calls.clear()
+                self._errors.clear()
+                self._total_seconds.clear()
+                self._max_seconds.clear()
+            return snapshot
 
     def reset(self) -> None:
         with self._lock:
