@@ -941,6 +941,7 @@ async def search_issues(
     query_id: int | None = None,
     custom_fields: dict[str, Any] | None = None,
     sort: str | None = None,
+    assigned_to: int | str | None = None,
     limit: int = 25,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -1009,6 +1010,9 @@ async def search_issues(
             params[f"cf_{field_id}"] = value
     if sort:
         params["sort"] = sort
+    if assigned_to is not None:
+        # Redmine accepts a numeric user id or the literal ``me``.
+        params["assigned_to_id"] = assigned_to
 
     payload = await client.get("/issues.json", params=params)
     issues = payload.get("issues", []) if isinstance(payload, dict) else []

@@ -18,6 +18,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     "redmine_close_issue": "issues",
     "redmine_delete_issue": "issues",
     "redmine_search_issues": "issues",
+    "redmine_my_issues": "issues",
     "redmine_bulk_close": "issues",
     "redmine_bulk_create_issues": "issues",
     "redmine_bulk_update_issues": "issues",
@@ -58,6 +59,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     # time tracking
     "redmine_create_time_entry": "time",
     "redmine_list_time_entries": "time",
+    "redmine_today_time_entries": "time",
     "redmine_update_time_entry": "time",
     "redmine_delete_time_entry": "time",
     # versions

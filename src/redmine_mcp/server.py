@@ -25,6 +25,7 @@ local variables still use PEP 604 union syntax (Python 3.10+ native).
 
 import atexit
 import contextlib
+import datetime
 import json
 import logging
 import sys
@@ -1126,6 +1127,53 @@ async def redmine_list_time_entries(
             spent_on=son,
             from_date=fd,
             to_date=td,
+            limit=limit,
+            offset=offset,
+        )
+
+    return await _wrap(factory)
+
+
+@mcp.tool()
+async def redmine_my_issues(status: str = "open", limit: int = 25, offset: int = 0) -> str:
+    """Issues assigned to the current user.
+
+    Convenience wrapper over ``redmine_search_issues`` for the common
+    "what's on my plate" query. ``status`` defaults to ``"open"`` and accepts
+    the same values as ``search_issues`` (``"open"``/``"closed"``/``"*"`` or a
+    named status).
+
+    Returns ``{issues, total_count, limit, offset, query}``.
+    """
+    st: int | str | None = status if status else None
+
+    async def factory(client, cache):
+        return await issues.search_issues(
+            client,
+            cache,
+            assigned_to="me",
+            status=st,
+            limit=limit,
+            offset=offset,
+        )
+
+    return await _wrap(factory)
+
+
+@mcp.tool()
+async def redmine_today_time_entries(limit: int = 25, offset: int = 0) -> str:
+    """Time entries logged today (server-local date).
+
+    Convenience wrapper over ``redmine_list_time_entries`` with
+    ``spent_on`` set to today.
+    """
+    today = datetime.date.today().isoformat()
+
+    async def factory(client, cache):
+        return await time_entries.list_time_entries(
+            client,
+            cache,
+            spent_on=today,
             limit=limit,
             offset=offset,
         )
