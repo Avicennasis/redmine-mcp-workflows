@@ -50,6 +50,39 @@ def test_cache_ttl_falls_back_on_garbage() -> None:
     assert cfg.cache_ttl_seconds == DEFAULT_CACHE_TTL_SECONDS
 
 
+def test_custom_field_ids_default_to_none() -> None:
+    cfg = Config.from_env(env={})
+    assert cfg.held_field_id is None
+    assert cfg.held_until_field_id is None
+    assert cfg.difficulty_field_id is None
+
+
+def test_custom_field_ids_parsed() -> None:
+    cfg = Config.from_env(
+        env={
+            "REDMINE_MCP_HELD_FIELD_ID": "2",
+            "REDMINE_MCP_HELD_UNTIL_FIELD_ID": "3",
+            "REDMINE_MCP_DIFFICULTY_FIELD_ID": "7",
+        }
+    )
+    assert cfg.held_field_id == 2
+    assert cfg.held_until_field_id == 3
+    assert cfg.difficulty_field_id == 7
+
+
+def test_custom_field_ids_ignore_blank_and_garbage() -> None:
+    cfg = Config.from_env(
+        env={
+            "REDMINE_MCP_HELD_FIELD_ID": "  ",
+            "REDMINE_MCP_HELD_UNTIL_FIELD_ID": "nope",
+            "REDMINE_MCP_DIFFICULTY_FIELD_ID": "",
+        }
+    )
+    assert cfg.held_field_id is None
+    assert cfg.held_until_field_id is None
+    assert cfg.difficulty_field_id is None
+
+
 def test_extra_headers_parsed() -> None:
     cfg = Config.from_env(env={"REDMINE_HEADERS": "Authorization: Bearer abc, X-Trace-Id: xyz"})
     assert cfg.extra_headers == {"Authorization": "Bearer abc", "X-Trace-Id": "xyz"}

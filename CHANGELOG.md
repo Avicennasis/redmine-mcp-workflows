@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Workflow cache no longer over-blocks multi-role users.** `is_disallowed`
+  treated a `disallowed` observation for *any* role as decisive, but Redmine
+  grants a transition when *any* role allows it. Because `record_outcome` writes
+  a `disallowed` row for every role on a single 422, one failed attempt could
+  permanently pre-flight-block a transition for a user whose other role permits
+  it. An `allowed` observation for any matching role now wins.
+- **Writes are no longer blindly retried.** `RedmineClient` retried every method
+  on 5xx/transport errors, so a `POST /issues.json` that committed before its
+  response was lost could create duplicates (up to 3). Retries are now limited
+  to idempotent methods (`GET`/`HEAD`/`OPTIONS`).
+- **`429` handling.** `429` now participates in the idempotent-method retry
+  policy and `Retry-After` is honored in both delta-seconds and HTTP-date forms,
+  capped at 60s. Non-idempotent writes remain single-shot because an
+  intermediary can return an ambiguous response after forwarding a request.
+- **Project references in `search`/`news`/`versions` are resolved and
+  URL-encoded.** A display name (e.g. the `project.name` from a prior issue
+  response) now resolves to a numeric id, and an unresolvable value cannot
+  inject `?`/`#`/`/` into the request path.
+- **`limit`/`offset` are clamped and echoed as applied.** A negative `limit`
+  was forwarded verbatim, and a requested 500 was reported as `limit: 500`
+  while Redmine actually returned 100.
+- **Bulk-create duplicate pre-check no longer swallows transient errors.**
+  Only 404/422 are treated as "no duplicate"; any other failure marks the spec
+  failed instead of creating a possible duplicate.
+
+### Added
+- **Configurable custom-field ids:** `REDMINE_MCP_HELD_FIELD_ID`,
+  `REDMINE_MCP_HELD_UNTIL_FIELD_ID`, and `REDMINE_MCP_DIFFICULTY_FIELD_ID` pin
+  the Held / Held Until / Difficulty fields so a renamed or localized Redmine
+  does not silently disable the hold gate or the difficulty default-fill. When
+  unset, the fields are still discovered by their English names.
+- **Same-origin guard on `RedmineClient.get_binary`.** An absolute URL pointing
+  at a different scheme, host, or port is refused rather than sent this
+  client's auth headers.
+
 ### Changed
 - **BREAKING: `held` now takes the reason, not a boolean.** `held=True` wrote
   the literal string `"1"` into the `Held` custom field — a value that records

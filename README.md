@@ -152,6 +152,9 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 | `REDMINE_MCP_CACHE_TTL` | `86400` (24h) | Per-entry TTL in seconds. |
 | `REDMINE_HEADERS` | _(empty)_ | Extra HTTP headers, comma-separated (e.g., `Authorization: Bearer ...`). |
 | `REDMINE_MCP_ALLOWED_DIRECTORIES` | `/tmp` | Comma-separated paths that `redmine_upload_attachment` may read from. |
+| `REDMINE_MCP_HELD_FIELD_ID` | _(none)_ | Numeric id of the `Held` custom field. Pin it when the field is renamed/localized, otherwise it is matched by the exact English name. |
+| `REDMINE_MCP_HELD_UNTIL_FIELD_ID` | _(none)_ | Numeric id of the `Held Until` custom field. |
+| `REDMINE_MCP_DIFFICULTY_FIELD_ID` | _(none)_ | Numeric id of the `Difficulty` custom field. |
 | `REDMINE_MCP_LOG_LEVEL` | `INFO` | stdlib logging level. |
 
 ## Text formatting in notes

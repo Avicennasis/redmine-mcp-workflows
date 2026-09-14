@@ -137,3 +137,14 @@ async def test_list_news_handles_non_dict_response(cache: SchemaCache) -> None:
         "offset": 0,
         "source": "api",
     }
+
+
+async def test_list_news_project_name_resolves_to_numeric_id(cache: SchemaCache) -> None:
+    cache.put_project(
+        15,
+        "claudecode",
+        {"id": 15, "identifier": "claudecode", "name": "ClaudeCode"},
+    )
+    client = FakeClient({("GET", "/projects/15/news.json"): {"news": [], "total_count": 0}})
+    await news.list_news(client, cache, project="ClaudeCode")
+    assert client.calls[-1][1] == "/projects/15/news.json"

@@ -24,6 +24,7 @@ Validation flow for ``update_issue`` (see ``docs/workflow-validation.md``):
 from __future__ import annotations
 
 import contextlib
+import logging
 from typing import Any
 
 from ..cache.schema_db import SchemaCache
@@ -49,6 +50,8 @@ DIFFICULTY_DEFAULT_VALUE = "Unclassified"
 HELD_FIELD_NAME = "Held"
 HELD_UNTIL_FIELD_NAME = "Held Until"
 
+log = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------
 # helpers
@@ -65,53 +68,6 @@ def _try_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-async def _resolve_project_id(
-    client: RedmineClient, cache: SchemaCache, ident: int | str
-) -> int | None:
-    """Resolve a project reference (id, numeric string, slug, or display name).
-
-    Lookup order:
-      1. Numeric id (int or stringy int) → return as-is.
-      2. Cache by identifier slug.
-      3. ``describe_project`` (fetches by slug, caches on success).
-      4. Cache by display name (case-insensitive) — handles the natural
-         get→create round-trip pattern where callers pass ``project.name``
-         from a prior ``redmine_get_issue`` response.
-      5. Refresh the project list and try the display-name match again.
-
-    Returns ``None`` when no path resolves; callers translate that into
-    a structured ``project_not_found`` error.
-    """
-    if isinstance(ident, int):
-        return ident
-    as_int = _try_int(ident)
-    if as_int is not None:
-        return as_int
-    ident_str = str(ident)
-    cached = cache.get_project(ident_str)
-    if cached is not None:
-        return _try_int(cached.get("id"))
-    fetched = await project_schema.describe_project(client, cache, ident_str)
-    if isinstance(fetched, dict) and not fetched.get("error"):
-        return _try_int(fetched.get("id"))
-    # Slug lookup failed — try display name (cached, then refreshed list).
-    by_name = cache.get_project_by_name(ident_str)
-    if by_name is not None:
-        return _try_int(by_name.get("id"))
-    listing = await project_schema.list_projects(client, limit=100)
-    target = ident_str.strip().lower()
-    for project in listing.get("projects", []):
-        if str(project.get("name", "")).strip().lower() == target:
-            with contextlib.suppress(KeyError, TypeError, ValueError):
-                cache.put_project(
-                    project_id=int(project["id"]),
-                    identifier=project.get("identifier", project["name"]),
-                    schema=project,
-                )
-            return _try_int(project.get("id"))
-    return None
 
 
 async def _resolve_tracker_id(
@@ -240,6 +196,28 @@ def _merge_custom_field(
     return out
 
 
+async def _resolve_custom_field(
+    client: RedmineClient,
+    cache: SchemaCache,
+    *,
+    field_id: int | None,
+    name: str,
+) -> dict[str, Any] | None:
+    """Return the target custom field, pinned by id or discovered by name.
+
+    A pinned id skips discovery entirely (and the admin-only
+    ``/custom_fields.json`` call it needs). The name path is enrichment, so
+    any error is swallowed and logged rather than failing the caller.
+    """
+    if field_id is not None:
+        return {"id": field_id}
+    try:
+        return await custom_fields_schema.get_custom_field_by_name(client, cache, name)
+    except Exception:  # noqa: BLE001 — enrichment, not load-bearing
+        log.debug("custom field %r not discoverable; convenience param skipped", name)
+        return None
+
+
 async def _apply_difficulty(
     client: RedmineClient,
     cache: SchemaCache,
@@ -247,6 +225,7 @@ async def _apply_difficulty(
     difficulty: str | None,
     *,
     default_fill: bool,
+    difficulty_field_id: int | None = None,
 ) -> list[dict[str, Any]] | None:
     """Translate the ``difficulty`` convenience param into a custom_fields entry.
 
@@ -256,20 +235,17 @@ async def _apply_difficulty(
         :data:`DIFFICULTY_DEFAULT_VALUE`.
       * Else → returns ``custom_fields`` unchanged.
 
-    Silently returns ``custom_fields`` unchanged if the Difficulty field
-    isn't discoverable in Redmine (e.g. legacy fleet, or admin-only
-    ``/custom_fields.json`` returned 403).
+    The field is pinned by ``difficulty_field_id`` when configured. Otherwise
+    it is discovered by its English name and the param silently no-ops when
+    the field isn't found (e.g. legacy fleet, renamed/localized field, or
+    admin-only ``/custom_fields.json`` returned 403).
     """
     if difficulty is None and not default_fill:
         return custom_fields
 
-    # Late import: avoid circular module load at startup.
-    from ..schema import custom_fields as cf_module
-
-    try:
-        field = await cf_module.get_custom_field_by_name(client, cache, DIFFICULTY_FIELD_NAME)
-    except Exception:  # noqa: BLE001 — enrichment, not load-bearing
-        field = None
+    field = await _resolve_custom_field(
+        client, cache, field_id=difficulty_field_id, name=DIFFICULTY_FIELD_NAME
+    )
     if field is None:
         return custom_fields
 
@@ -306,6 +282,9 @@ async def _apply_held(
     custom_fields: list[dict[str, Any]] | None,
     held: str | bool | None,
     held_until: str | None,
+    *,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
 ) -> list[dict[str, Any]] | None:
     """Translate ``held`` / ``held_until`` convenience params into custom_fields entries.
 
@@ -317,6 +296,9 @@ async def _apply_held(
     ``held=True`` is rejected by :func:`_validate_held_reason` before this
     runs — see that function for why.  ``held=False`` clears the hold.
 
+    The fields are pinned by ``held_field_id`` / ``held_until_field_id`` when
+    configured, otherwise discovered by their English names.
+
     If the caller already provided an explicit ``custom_fields`` entry
     for the same field id, the explicit entry wins and the convenience
     parameter is skipped for that field.
@@ -324,13 +306,10 @@ async def _apply_held(
     if held is None and held_until is None:
         return custom_fields
 
-    from ..schema import custom_fields as cf_module
-
     if held is not None:
-        try:
-            field = await cf_module.get_custom_field_by_name(client, cache, HELD_FIELD_NAME)
-        except Exception:
-            field = None
+        field = await _resolve_custom_field(
+            client, cache, field_id=held_field_id, name=HELD_FIELD_NAME
+        )
         if field is not None:
             field_id = int(field["id"])
             # Explicit custom_fields entry for this field takes precedence.
@@ -345,10 +324,9 @@ async def _apply_held(
                 )
 
     if held_until is not None:
-        try:
-            field = await cf_module.get_custom_field_by_name(client, cache, HELD_UNTIL_FIELD_NAME)
-        except Exception:
-            field = None
+        field = await _resolve_custom_field(
+            client, cache, field_id=held_until_field_id, name=HELD_UNTIL_FIELD_NAME
+        )
         if field is not None:
             field_id = int(field["id"])
             # Explicit custom_fields entry for this field takes precedence.
@@ -406,6 +384,9 @@ async def create_issue(
     due_date: str | None = None,
     start_date: str | None = None,
     done_ratio: int | None = None,
+    difficulty_field_id: int | None = None,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Create an issue with pre-flight validation and id resolution.
 
@@ -448,11 +429,24 @@ async def create_issue(
         return _validation_response(errs)
 
     custom_fields = await _apply_difficulty(
-        client, cache, custom_fields, difficulty, default_fill=True
+        client,
+        cache,
+        custom_fields,
+        difficulty,
+        default_fill=True,
+        difficulty_field_id=difficulty_field_id,
     )
-    custom_fields = await _apply_held(client, cache, custom_fields, held, held_until)
+    custom_fields = await _apply_held(
+        client,
+        cache,
+        custom_fields,
+        held,
+        held_until,
+        held_field_id=held_field_id,
+        held_until_field_id=held_until_field_id,
+    )
 
-    project_id = await _resolve_project_id(client, cache, project)
+    project_id = await project_schema.resolve_project_id(client, cache, project)
     if project_id is None:
         return {
             "error": "project_not_found",
@@ -531,6 +525,9 @@ async def update_issue(
     due_date: str | None = None,
     start_date: str | None = None,
     done_ratio: int | None = None,
+    difficulty_field_id: int | None = None,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Update an issue with reactive workflow validation.
 
@@ -589,9 +586,22 @@ async def update_issue(
     # the contract is "change this field"; default-filling would silently
     # overwrite user-set values on every unrelated update.
     custom_fields = await _apply_difficulty(
-        client, cache, custom_fields, difficulty, default_fill=False
+        client,
+        cache,
+        custom_fields,
+        difficulty,
+        default_fill=False,
+        difficulty_field_id=difficulty_field_id,
     )
-    custom_fields = await _apply_held(client, cache, custom_fields, held, held_until)
+    custom_fields = await _apply_held(
+        client,
+        cache,
+        custom_fields,
+        held,
+        held_until,
+        held_field_id=held_field_id,
+        held_until_field_id=held_until_field_id,
+    )
 
     target_status_id: int | None = None
     if status is not None:
@@ -613,7 +623,11 @@ async def update_issue(
             s.get("id") == target_status_id and s.get("is_closed") for s in statuses
         )
         if target_is_closed:
-            held_err = field_validators.check_held_gate(issue)
+            held_err = field_validators.check_held_gate(
+                issue,
+                held_field_id=held_field_id,
+                held_until_field_id=held_until_field_id,
+            )
             if held_err is not None:
                 return held_err.as_dict()
 
@@ -785,6 +799,8 @@ async def close_issue(
     issue_id: int,
     *,
     note: str | None = None,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Set status to the first status flagged ``is_closed`` (defaults to id 5)."""
     statuses = cache.get_meta_json("issue_statuses")
@@ -800,7 +816,15 @@ async def close_issue(
     if closed_id is None:
         closed_id = 5  # Standard Redmine "Closed" id.
 
-    result = await update_issue(client, cache, issue_id, status=closed_id, notes=note)
+    result = await update_issue(
+        client,
+        cache,
+        issue_id,
+        status=closed_id,
+        notes=note,
+        held_field_id=held_field_id,
+        held_until_field_id=held_until_field_id,
+    )
     if isinstance(result, dict) and result.get("error") == "workflow_transition_disallowed":
         result = dict(result)
         from_st = result.get("from_status")
@@ -907,14 +931,16 @@ async def search_issues(
     ``field[:desc]`` and comma-separated lists, including custom fields as
     ``cf_<id>`` (e.g. ``"cf_5:desc"``).
     """
-    params: dict[str, Any] = {"limit": min(limit, 100), "offset": offset}
+    applied_limit = max(1, min(limit, 100))
+    applied_offset = max(0, offset)
+    params: dict[str, Any] = {"limit": applied_limit, "offset": applied_offset}
     if query_id is not None:
         params["query_id"] = query_id
     if query:
         # ~ prefix asks Redmine for substring match on the field.
         params["subject"] = f"~{query}"
     if project is not None:
-        project_id = await _resolve_project_id(client, cache, project)
+        project_id = await project_schema.resolve_project_id(client, cache, project)
         if project_id is None:
             return {
                 "error": "project_not_found",
@@ -961,7 +987,7 @@ async def search_issues(
     return {
         "issues": issues,
         "total_count": total,
-        "limit": limit,
-        "offset": offset,
+        "limit": applied_limit,
+        "offset": applied_offset,
         "query": query,
     }

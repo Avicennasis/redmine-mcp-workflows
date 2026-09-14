@@ -30,6 +30,7 @@ from typing import Any
 
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
+from ..errors import RedmineAPIError
 from . import issues as issues_module
 
 # Default sleep between per-issue POSTs in bulk_create_issues. Empirically
@@ -93,6 +94,9 @@ async def bulk_update_issues(
     start_date: str | None = None,
     done_ratio: int | None = None,
     stop_on_error: bool = False,
+    difficulty_field_id: int | None = None,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Apply the same field updates to every issue in ``issue_ids``.
 
@@ -155,6 +159,9 @@ async def bulk_update_issues(
             cache,
             issue_id,
             **update_kwargs,
+            difficulty_field_id=difficulty_field_id,
+            held_field_id=held_field_id,
+            held_until_field_id=held_until_field_id,
         )
         if isinstance(result, dict) and "error" in result:
             failed.append({"issue_id": issue_id, **result})
@@ -184,6 +191,10 @@ async def _find_existing_by_subject(
     full subject as the filter (≤5 results) then exact-string-match
     client-side. Returns the matching issue id or ``None`` if no
     exact-subject match in the project.
+
+    Raises :class:`RedmineAPIError` for anything other than 404/422 —
+    swallowing a transient failure would report "no duplicate" and let the
+    caller create one, defeating ``on_duplicate="skip"``.
     """
     params: dict[str, Any] = {
         "project_id": project,
@@ -193,8 +204,10 @@ async def _find_existing_by_subject(
     }
     try:
         payload = await client.get("/issues.json", params=params)
-    except Exception:
-        return None
+    except RedmineAPIError as e:
+        if e.status_code in (404, 422):
+            return None
+        raise
     issues_found = (payload or {}).get("issues") if isinstance(payload, dict) else None
     for i in issues_found or []:
         if i.get("subject") == subject:
@@ -217,6 +230,7 @@ async def bulk_create_issues(
     on_duplicate: str = "skip",
     pacing_seconds: float = DEFAULT_BULK_CREATE_PACING_S,
     stop_on_error: bool = False,
+    difficulty_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Bulk-create issues from per-spec dicts with subject idempotency.
 
@@ -296,7 +310,27 @@ async def bulk_create_issues(
 
         # Idempotency pre-check.
         if on_duplicate in {"skip", "fail"}:
-            existing_id = await _find_existing_by_subject(client, project, subject)
+            try:
+                existing_id = await _find_existing_by_subject(client, project, subject)
+            except RedmineAPIError as e:
+                results.append(
+                    {
+                        "subject": subject,
+                        "status": "failed",
+                        "error": e.as_structured().get("error", "redmine_api_error"),
+                        "hint": (
+                            "Duplicate pre-check failed; refusing to create "
+                            "rather than risk a duplicate."
+                        ),
+                    }
+                )
+                summary["failed"] += 1
+                if stop_on_error:
+                    skipped_for_stop_on_error = [
+                        {"subject": s["subject"]} for s in issues[idx + 1 :]
+                    ]
+                    break
+                continue
             if existing_id is not None:
                 if on_duplicate == "skip":
                     results.append(
@@ -349,7 +383,9 @@ async def bulk_create_issues(
             if k in spec and spec[k] is not None:
                 create_kwargs[k] = spec[k]
 
-        result = await issues_module.create_issue(client, cache, **create_kwargs)
+        result = await issues_module.create_issue(
+            client, cache, **create_kwargs, difficulty_field_id=difficulty_field_id
+        )
         if isinstance(result, dict) and "error" in result:
             results.append(
                 {
@@ -389,6 +425,8 @@ async def bulk_close(
     issue_ids: list[int],
     note: str | None = None,
     stop_on_error: bool = False,
+    held_field_id: int | None = None,
+    held_until_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Close every issue in ``issue_ids``, optionally with a shared note."""
     if (err := _check_batch_size(issue_ids)) is not None:
@@ -404,6 +442,8 @@ async def bulk_close(
             cache,
             issue_id,
             note=note,
+            held_field_id=held_field_id,
+            held_until_field_id=held_until_field_id,
         )
         if isinstance(result, dict) and "error" in result:
             failed.append({"issue_id": issue_id, **result})

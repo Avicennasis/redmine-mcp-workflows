@@ -25,6 +25,16 @@ def _truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_optional_int(raw: str | None) -> int | None:
+    """Parse an optional integer env var; ``None`` for unset/blank/invalid."""
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 def _parse_headers(raw: str | None) -> dict[str, str]:
     """Parse a comma-separated ``Header: Value`` string into a dict."""
     if not raw:
@@ -59,6 +69,12 @@ class Config:
     enable_passthrough: bool = False
     cache_dir: Path = field(default_factory=lambda: Path(user_cache_dir("redmine-mcp")))
     cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS
+    # Optional explicit custom-field ids for the convenience params. When set,
+    # the field is used directly instead of being discovered by (English)
+    # name, which breaks silently on a renamed or localized Redmine.
+    held_field_id: int | None = None
+    held_until_field_id: int | None = None
+    difficulty_field_id: int | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -93,6 +109,9 @@ class Config:
             enable_passthrough=_truthy(e.get("REDMINE_MCP_ENABLE_PASSTHROUGH")),
             cache_dir=cache_dir,
             cache_ttl_seconds=cache_ttl,
+            held_field_id=_parse_optional_int(e.get("REDMINE_MCP_HELD_FIELD_ID")),
+            held_until_field_id=_parse_optional_int(e.get("REDMINE_MCP_HELD_UNTIL_FIELD_ID")),
+            difficulty_field_id=_parse_optional_int(e.get("REDMINE_MCP_DIFFICULTY_FIELD_ID")),
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),

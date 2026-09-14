@@ -15,6 +15,7 @@ from typing import Any
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
 from ..errors import RedmineAPIError
+from ..schema import project as project_schema
 
 ALLOWED_RESOURCE_TYPES = frozenset(
     {
@@ -32,7 +33,7 @@ ALLOWED_ATTACHMENT_MODES = frozenset({"0", "1", "only"})
 
 async def search(
     client: RedmineClient,
-    cache: SchemaCache,  # noqa: ARG001 — kept for signature parity
+    cache: SchemaCache,
     *,
     query: str,
     project: int | str | None = None,
@@ -85,12 +86,15 @@ async def search(
 
     path = "/search.json"
     if project is not None:
-        path = f"/projects/{project}/search.json"
+        segment = await project_schema.project_path_segment(client, cache, project)
+        path = f"/projects/{segment}/search.json"
 
+    applied_limit = max(1, min(limit, 100))
+    applied_offset = max(0, offset)
     params: dict[str, Any] = {
         "q": query.strip(),
-        "limit": min(limit, 100),
-        "offset": offset,
+        "limit": applied_limit,
+        "offset": applied_offset,
     }
     if not all_words:
         params["all_words"] = 0
@@ -114,15 +118,15 @@ async def search(
         return {
             "results": [],
             "total_count": 0,
-            "limit": limit,
-            "offset": offset,
+            "limit": applied_limit,
+            "offset": applied_offset,
             "source": "api",
         }
 
     return {
         "results": resp.get("results", []),
         "total_count": resp.get("total_count", 0),
-        "limit": resp.get("limit", limit),
-        "offset": resp.get("offset", offset),
+        "limit": resp.get("limit", applied_limit),
+        "offset": resp.get("offset", applied_offset),
         "source": "api",
     }

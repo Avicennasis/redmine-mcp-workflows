@@ -119,3 +119,38 @@ async def test_search_non_dict_response(cache):
     result = await search.search(client, cache, query="test")
     assert result["results"] == []
     assert result["total_count"] == 0
+
+
+async def test_search_project_name_resolves_to_numeric_id(cache):
+    cache.put_project(
+        15,
+        "claudecode",
+        {"id": 15, "identifier": "claudecode", "name": "ClaudeCode"},
+    )
+    client = FakeClient({("GET", "/projects/15/search.json"): {"results": [], "total_count": 0}})
+    await search.search(client, cache, query="test", project="ClaudeCode")
+    assert client.calls[-1][1] == "/projects/15/search.json"
+
+
+async def test_search_unresolvable_project_is_percent_encoded(cache):
+    client = FakeClient({("GET", "/search.json"): {"results": [], "total_count": 0}})
+    await search.search(client, cache, query="test", project="1?status_id=*")
+    # The '?' must not leak into the URL as a query separator.
+    assert client.calls[-1][1] == "/projects/1%3Fstatus_id%3D%2A/search.json"
+    assert all("?" not in path for _, path, _ in client.calls)
+
+
+async def test_search_reports_applied_limit(cache):
+    client = FakeClient({("GET", "/search.json"): {"results": [], "total_count": 0}})
+    result = await search.search(client, cache, query="test", limit=500)
+    assert client.calls[-1][2]["limit"] == 100
+    assert result["limit"] == 100
+
+
+async def test_search_clamps_negative_pagination(cache):
+    client = FakeClient({("GET", "/search.json"): {"results": [], "total_count": 0}})
+    result = await search.search(client, cache, query="test", limit=-5, offset=-3)
+    assert client.calls[-1][2]["limit"] == 1
+    assert client.calls[-1][2]["offset"] == 0
+    assert result["limit"] == 1
+    assert result["offset"] == 0

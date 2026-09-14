@@ -65,8 +65,11 @@ returns:
 
 When `redmine_update_issue` runs the validation hook:
 
-1. Look up the proposed `(tracker, role, from, to)` in observed_workflow.
-2. If marked disallowed → return a structured error *before* sending the PUT.
+1. Look up the proposed `(tracker, role, from, to)` in observed_workflow for
+   every role the user holds.
+2. If disallowed for **every** one of those roles → return a structured error
+   *before* sending the PUT. An `allowed` observation for any single role
+   permits the transition (Redmine is role-union), so it wins.
 3. If marked allowed → send the PUT. (If it 422s anyway, that's a rule
    change since last observation; record the new state and surface the error.)
 4. If unknown → send the PUT, observe the outcome, record it, and surface
