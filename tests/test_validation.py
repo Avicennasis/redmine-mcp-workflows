@@ -101,6 +101,33 @@ def test_is_disallowed_picks_most_recent_when_multiple_roles(cache: SchemaCache)
     assert hit.role_id == 4  # later observation wins
 
 
+def test_is_disallowed_unknown_role_keeps_union_unknown(cache: SchemaCache) -> None:
+    """One disallowed role cannot prove an unobserved role also disallows it."""
+    cache.record_workflow_observation(
+        tracker_id=1, role_id=3, from_status_id=1, to_status_id=5, outcome="disallowed"
+    )
+    assert (
+        transitions.is_disallowed(
+            cache, tracker_id=1, role_ids=[3, 4], from_status_id=1, to_status_id=5
+        )
+        is None
+    )
+
+
+def test_is_disallowed_does_not_mix_global_observation_into_project_roles(
+    cache: SchemaCache,
+) -> None:
+    cache.record_workflow_observation(
+        tracker_id=1, role_id=0, from_status_id=1, to_status_id=5, outcome="disallowed"
+    )
+    assert (
+        transitions.is_disallowed(
+            cache, tracker_id=1, role_ids=[4], from_status_id=1, to_status_id=5
+        )
+        is None
+    )
+
+
 def test_is_disallowed_allowed_role_wins_over_disallowed_role(cache: SchemaCache) -> None:
     """Redmine is role-union: one role allowing the transition is enough.
 

@@ -5,9 +5,10 @@ Two queries:
   - :func:`is_disallowed`: did we observe this exact transition fail before?
   - :func:`allowed_next`: which transitions has this role observed succeeding?
 
-Both walk every supplied role id (Redmine permissions are role-union),
-plus role ``0`` which captures "global admin / no project membership"
-observations.
+Both walk every supplied role id (Redmine permissions are role-union).
+Role ``0`` is used only when no project-membership roles are supplied; it
+captures "global admin / no project membership" observations without leaking
+those observations into ordinary project-role decisions.
 """
 
 from __future__ import annotations
@@ -29,12 +30,12 @@ class DisallowedHit:
 
 
 def _role_set(role_ids: Iterable[int]) -> list[int]:
-    """Always include role 0 (global-admin / no-membership) in lookups."""
+    """Deduplicate roles, using role 0 only for global/no-membership users."""
     seen: list[int] = []
-    for r in (*role_ids, 0):
+    for r in role_ids:
         if r not in seen:
             seen.append(r)
-    return seen
+    return seen or [0]
 
 
 def is_disallowed(
@@ -58,9 +59,10 @@ def is_disallowed(
     single PUT 422s, so an ``allowed`` row for one role could be outweighed
     by a stale failure on another.
 
-    Among the remaining all-disallowed roles, the most-recent observation
-    wins. Returns ``None`` when no role has any observation for this
-    transition — the caller should let the API decide.
+    Every role must have a ``disallowed`` observation before the cache can
+    reject the transition. If any role is unobserved, the union is still
+    unknown and the caller must let the API decide. Among all-disallowed
+    roles, the most-recent observation supplies the diagnostic details.
     """
     best: DisallowedHit | None = None
     for rid in _role_set(role_ids):
@@ -70,9 +72,7 @@ def is_disallowed(
             from_status_id=from_status_id,
             to_status_id=to_status_id,
         )
-        if obs is None:
-            continue
-        if obs["outcome"] == "allowed":
+        if obs is None or obs["outcome"] == "allowed":
             return None
         if best is None or obs["observed_at"] > best.observed_at:
             best = DisallowedHit(
