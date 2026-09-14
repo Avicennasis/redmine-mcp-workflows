@@ -298,3 +298,96 @@ async def test_delete_propagates_404(cache: SchemaCache) -> None:
     )
     result = await time_entries.delete_time_entry(client, cache, 999)
     assert result["error"] == "redmine_api_404"
+
+
+# ---------------------------------------------------------------------
+# time_report (#44466)
+# ---------------------------------------------------------------------
+
+
+async def test_time_report_groups_by_user(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/time_entries.json"): {
+                "time_entries": [
+                    {"hours": 2.0, "user": {"name": "alice"}},
+                    {"hours": 3.5, "user": {"name": "alice"}},
+                    {"hours": 1.0, "user": {"name": "bob"}},
+                ],
+                "total_count": 3,
+            },
+        }
+    )
+    result = await time_entries.time_report(client, cache, group_by="user")
+    assert result["total_hours"] == 6.5
+    assert result["entry_count"] == 3
+    assert result["groups"][0]["key"] == "alice"
+    assert result["groups"][0]["hours"] == 5.5
+    assert result["truncated"] is False
+
+
+async def test_time_report_rejects_bad_group_by(cache: SchemaCache) -> None:
+    client = FakeClient()
+    result = await time_entries.time_report(client, cache, group_by="bananas")
+    assert result["error"] == "invalid_group_by"
+    assert client.calls == []
+
+
+async def test_time_report_issue_group_missing_is_none(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/time_entries.json"): {
+                "time_entries": [{"hours": 1.0, "issue": {"id": 5}}, {"hours": 1.0}],
+                "total_count": 2,
+            },
+        }
+    )
+    result = await time_entries.time_report(client, cache, group_by="issue")
+    keys = {g["key"] for g in result["groups"]}
+    assert keys == {"5", "(none)"}
+
+
+async def test_time_report_marks_truncated(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/time_entries.json"): {
+                "time_entries": [
+                    {"hours": 1.0, "user": {"name": "a"}},
+                    {"hours": 1.0, "user": {"name": "b"}},
+                ],
+                "total_count": 10,
+            },
+        }
+    )
+    result = await time_entries.time_report(client, cache, max_entries=2)
+    assert result["truncated"] is True
+    assert result["entry_count"] == 2
+
+
+@pytest.mark.parametrize("max_entries", [0, -1])
+async def test_time_report_rejects_nonpositive_cap(cache: SchemaCache, max_entries: int) -> None:
+    client = FakeClient()
+    result = await time_entries.time_report(client, cache, max_entries=max_entries)
+    assert result["error"] == "invalid_max_entries"
+    assert client.calls == []
+
+
+async def test_time_report_never_fetches_past_cap(cache: SchemaCache) -> None:
+    all_entries = [{"hours": 1.0, "user": {"name": "alice"}} for _ in range(200)]
+
+    class PaginatedClient(FakeClient):
+        async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+            self.calls.append(("GET", path, params))
+            assert params is not None
+            offset = params["offset"]
+            limit = params["limit"]
+            return {
+                "time_entries": all_entries[offset : offset + limit],
+                "total_count": len(all_entries),
+            }
+
+    client = PaginatedClient()
+    result = await time_entries.time_report(client, cache, max_entries=150)
+    assert result["entry_count"] == 150
+    assert result["truncated"] is True
+    assert [call[2]["limit"] for call in client.calls] == [100, 50]

@@ -270,3 +270,99 @@ async def delete_time_entry(
     except RedmineAPIError as e:
         return e.as_structured()
     return {"deleted": True, "time_entry_id": time_entry_id, "source": "api"}
+
+
+_GROUP_KEYS: dict[str, tuple[str, ...]] = {
+    "user": ("user", "name"),
+    "project": ("project", "name"),
+    "activity": ("activity", "name"),
+    "issue": ("issue", "id"),
+}
+
+
+async def time_report(
+    client: RedmineClient,
+    cache: SchemaCache,  # noqa: ARG001 — signature parity
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    project_id: int | None = None,
+    user_id: int | None = None,
+    group_by: str = "user",
+    max_entries: int = 1000,
+) -> dict[str, Any]:
+    """Aggregate time entries over a date range, grouped by a dimension.
+
+    Redmine has no JSON aggregation endpoint, so entries are fetched
+    (paginated) and summed client-side, capped at ``max_entries`` to bound
+    the request. Returns the total plus a per-group breakdown.
+    """
+    key_path = _GROUP_KEYS.get(group_by)
+    if key_path is None:
+        return {
+            "error": "invalid_group_by",
+            "hint": f"group_by must be one of {sorted(_GROUP_KEYS)}.",
+            "group_by": group_by,
+        }
+    if max_entries < 1:
+        return {
+            "error": "invalid_max_entries",
+            "hint": "max_entries must be at least 1.",
+            "max_entries": max_entries,
+        }
+
+    base: dict[str, Any] = {}
+    if from_date is not None:
+        base["from"] = from_date
+    if to_date is not None:
+        base["to"] = to_date
+    if project_id is not None:
+        base["project_id"] = project_id
+    if user_id is not None:
+        base["user_id"] = user_id
+
+    entries: list[dict[str, Any]] = []
+    truncated = False
+    offset = 0
+    while True:
+        page_size = min(100, max_entries - len(entries))
+        params = {**base, "limit": page_size, "offset": offset}
+        payload = await client.get("/time_entries.json", params=params)
+        page = payload.get("time_entries", []) if isinstance(payload, dict) else []
+        entries.extend(page)
+        total = (
+            payload.get("total_count", len(entries)) if isinstance(payload, dict) else len(entries)
+        )
+        offset += len(page)
+        if not page or offset >= total:
+            break
+        if len(entries) >= max_entries:
+            truncated = True
+            break
+
+    groups: dict[str, dict[str, Any]] = {}
+    total_hours = 0.0
+    for entry in entries:
+        node: Any = entry
+        for key in key_path:
+            node = node.get(key) if isinstance(node, dict) else None
+        label = str(node) if node is not None else "(none)"
+        bucket = groups.setdefault(label, {"key": label, "hours": 0.0, "entries": 0})
+        try:
+            hours = float(entry.get("hours") or 0.0)
+        except (TypeError, ValueError):
+            hours = 0.0
+        bucket["hours"] = round(bucket["hours"] + hours, 2)
+        bucket["entries"] += 1
+        total_hours += hours
+
+    return {
+        "from": from_date,
+        "to": to_date,
+        "group_by": group_by,
+        "total_hours": round(total_hours, 2),
+        "entry_count": len(entries),
+        "truncated": truncated,
+        "groups": sorted(groups.values(), key=lambda g: g["hours"], reverse=True),
+        "source": "api",
+    }
