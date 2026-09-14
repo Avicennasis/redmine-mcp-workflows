@@ -85,6 +85,9 @@ class RedmineClient:
         # OAuth bearer if available, otherwise X-Redmine-API-Key; raises if
         # neither is configured.
         headers.update(config.require_auth_headers())
+        if config.switch_user:
+            # Redmine admin impersonation: act as another login.
+            headers["X-Redmine-Switch-User"] = config.switch_user
         headers.update(config.extra_headers)
         self._client = httpx.AsyncClient(
             base_url=config.redmine_url,
