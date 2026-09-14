@@ -620,6 +620,25 @@ async def test_view_attachment_returns_bytes_for_image(cache: SchemaCache) -> No
     assert result["format"] == "png"
 
 
+async def test_view_attachment_percent_encodes_filename(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/attachments/5.json"): {
+                "attachment": {
+                    "id": 5,
+                    "filename": "shot #1?.png",
+                    "filesize": 3,
+                    "content_type": "image/png",
+                }
+            },
+            ("GET_BIN", "/attachments/download/5/shot%20%231%3F.png"): b"PNG",
+        }
+    )
+    result = await attachments.view_attachment(client, cache, 5)
+    assert result["image"] == b"PNG"
+    assert client.calls[-1][1] == "/attachments/download/5/shot%20%231%3F.png"
+
+
 async def test_view_attachment_rejects_non_image(cache: SchemaCache) -> None:
     client = FakeClient(
         {

@@ -1097,22 +1097,32 @@ async def redmine_view_attachment(
         attachment_id: numeric Redmine attachment id.
         max_bytes: inline size ceiling; larger images are refused.
     """
-    cfg = _get_config()
-    cache = _get_cache()
+    started = time.perf_counter()
+    failed = False
     try:
+        cfg = _get_config()
+        cache = _get_cache()
         async with RedmineClient(cfg) as client:
             result = await attachments.view_attachment(
                 client, cache, attachment_id, max_bytes=max_bytes
             )
+        if isinstance(result, dict) and "error" in result:
+            failed = True
+            return _dump(result)
+        return Image(data=result["image"], format=result["format"])
     except RedmineAPIError as e:
+        failed = True
         return _dump(e.as_structured())
     except Exception as e:  # pragma: no cover - last-resort guard
+        failed = True
         log.exception("unexpected error in redmine_view_attachment")
         return _dump({"error": "internal_error", "hint": str(e)})
-
-    if isinstance(result, dict) and "image" in result:
-        return Image(data=result["image"], format=result["format"])
-    return _dump(result)
+    finally:
+        METRICS.record(
+            "redmine_view_attachment",
+            time.perf_counter() - started,
+            error=failed,
+        )
 
 
 @mcp.tool()

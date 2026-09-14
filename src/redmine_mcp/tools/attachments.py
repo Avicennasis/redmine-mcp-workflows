@@ -32,6 +32,7 @@ import asyncio
 import mimetypes
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
@@ -328,12 +329,13 @@ async def download_attachment(
             "body": meta_resp,
         }
 
-    filename = meta["filename"]
+    filename = str(meta["filename"])
     expected_size = meta.get("filesize")
     content_type = meta.get("content_type") or "application/octet-stream"
 
     try:
-        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename}")
+        filename_segment = quote(filename, safe="")
+        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename_segment}")
     except RedmineAPIError as e:
         return e.as_structured()
 
@@ -413,7 +415,7 @@ async def view_attachment(
             "body": meta_resp,
         }
 
-    filename = meta["filename"]
+    filename = str(meta["filename"])
     content_type = meta.get("content_type") or ""
     fmt = image_format(content_type)
     if fmt is None:
@@ -442,7 +444,8 @@ async def view_attachment(
         }
 
     try:
-        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename}")
+        filename_segment = quote(filename, safe="")
+        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename_segment}")
     except RedmineAPIError as e:
         return e.as_structured()
 
