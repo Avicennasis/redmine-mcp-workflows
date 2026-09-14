@@ -109,6 +109,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     "redmine_list_queries": "reference",
     "redmine_describe_tracker": "reference",
     "redmine_list_custom_fields": "reference",
+    "redmine_list_endpoints": "reference",
     # search
     "redmine_search": "search",
     # admin / escape hatch
