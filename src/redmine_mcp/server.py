@@ -309,7 +309,12 @@ async def _wrap(coro_factory, *, write: bool = False):
             elif write:
                 # A mutation may have changed a project's trackers/categories;
                 # drop the project cache so the next read refetches.
-                cache.invalidate_projects()
+                try:
+                    cache.invalidate_projects()
+                except Exception:  # noqa: BLE001 — the remote write already succeeded
+                    # Never turn a committed remote mutation into an apparent
+                    # failure: callers could retry and create duplicates.
+                    log.exception("project cache invalidation failed after successful write")
             return _dump(result)
         except RedmineAPIError as e:
             failed = True
