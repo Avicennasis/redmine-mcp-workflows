@@ -1425,3 +1425,128 @@ async def test_apply_held_does_not_truncate_a_long_reason(cache: SchemaCache) ->
     out = await issues._apply_held(FakeClient({}), cache, None, reason, None)
     assert out is not None
     assert len(next(e for e in out if e["id"] == 2)["value"]) == 500
+
+
+# search_issues: tracker filter and query_id/custom_fields conflict (#50738)
+#
+# All four parallel /work-tickets sessions on 2026-08-30 needed "the N oldest
+# open non-held Bug tickets at difficulty X" and none could express it, so all
+# four went around the server to curl /issues.json directly. The failure was
+# silent: with no tracker filter the call returns Features/NewApps/Prompts
+# mixed in and nothing in the response says a tracker filter was impossible.
+# ---------------------------------------------------------------------
+
+
+async def test_search_issues_resolves_tracker_name_to_id(cache: SchemaCache) -> None:
+    _seed_tracker_and_project(cache)
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, tracker="Bug")
+    assert "error" not in result
+    sent = client.calls[-1][2]
+    assert sent["tracker_id"] == "1"
+
+
+async def test_search_issues_accepts_numeric_tracker_id(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, tracker=1)
+    assert client.calls[-1][2]["tracker_id"] == "1"
+
+
+async def test_search_issues_accepts_comma_separated_tracker_list(cache: SchemaCache) -> None:
+    cache.put_tracker(1, "Bug", {"id": 1, "name": "Bug"})
+    cache.put_tracker(2, "Feature", {"id": 2, "name": "Feature"})
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, tracker="Bug,Feature")
+    assert client.calls[-1][2]["tracker_id"] == "1,2"
+
+
+async def test_search_issues_unknown_tracker_is_a_hard_error_and_sends_nothing(
+    cache: SchemaCache,
+) -> None:
+    # Same reasoning as custom_field_not_found: a filter that does not reach
+    # the API returns everything in scope and looks like a successful match.
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, tracker="Nonexistent")
+    assert result["error"] == "tracker_not_found"
+    assert result["tracker"] == "Nonexistent"
+    assert not any(c[1] == "/issues.json" for c in client.calls)
+
+
+async def test_search_issues_without_tracker_sends_no_tracker_id(cache: SchemaCache) -> None:
+    # Negative control. Without this, a mutation that unconditionally set
+    # tracker_id would still pass every row above.
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, query="anything")
+    assert "tracker_id" not in client.calls[-1][2]
+
+
+async def test_search_issues_refuses_query_id_together_with_custom_fields(
+    cache: SchemaCache,
+) -> None:
+    # Measured on this fleet: query_id=12 plus {"Held": "!*"} returned every
+    # Held ticket the caller had just excluded. Refuse rather than answer wrongly.
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, query_id=12, custom_fields={"Held": "!*"})
+    assert result["error"] == "query_id_conflicts_with_custom_fields"
+    assert result["query_id"] == 12
+    assert result["custom_fields"] == ["Held"]
+    assert not any(c[1] == "/issues.json" for c in client.calls)
+
+
+async def test_search_issues_query_id_alone_still_works(cache: SchemaCache) -> None:
+    # The guard must not break the supported combination.
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    result = await issues.search_issues(client, cache, query_id=12)
+    assert "error" not in result
+    assert client.calls[-1][2]["query_id"] == 12
+
+
+async def test_difficulty_query_without_tracker_returns_mixed_trackers(
+    cache: SchemaCache,
+) -> None:
+    """The exact shape that bit all four sessions on 2026-08-30.
+
+    Filtering only on the Difficulty custom field returns Features, NewApps and
+    Prompts alongside Bugs, and the response carries no signal that a tracker
+    filter was impossible -- a caller who does not inspect .tracker.name on every
+    row believes they filtered. This test exists so that stays visible.
+    """
+    mixed = {
+        "issues": [
+            {"id": 1, "tracker": {"id": 1, "name": "Bug"}},
+            {"id": 2, "tracker": {"id": 2, "name": "Feature"}},
+            {"id": 3, "tracker": {"id": 5, "name": "NewApp"}},
+            {"id": 4, "tracker": {"id": 4, "name": "Prompt"}},
+        ],
+        "total_count": 4,
+    }
+    client = FakeClient({("GET", "/issues.json"): mixed})
+    result = await issues.search_issues(client, cache, custom_fields={"1": "Hard"})
+    sent = client.calls[-1][2]
+    assert sent["cf_1"] == "Hard"
+    assert "tracker_id" not in sent
+    assert {i["tracker"]["name"] for i in result["issues"]} == {
+        "Bug",
+        "Feature",
+        "NewApp",
+        "Prompt",
+    }
+
+
+async def test_same_difficulty_query_with_tracker_bug_constrains_the_request(
+    cache: SchemaCache,
+) -> None:
+    _seed_tracker_and_project(cache)
+    only_bugs = {
+        "issues": [
+            {"id": 1, "tracker": {"id": 1, "name": "Bug"}},
+            {"id": 7, "tracker": {"id": 1, "name": "Bug"}},
+        ],
+        "total_count": 2,
+    }
+    client = FakeClient({("GET", "/issues.json"): only_bugs})
+    result = await issues.search_issues(client, cache, tracker="Bug", custom_fields={"1": "Hard"})
+    sent = client.calls[-1][2]
+    assert sent["tracker_id"] == "1"
+    assert sent["cf_1"] == "Hard"
+    assert {i["tracker"]["name"] for i in result["issues"]} == {"Bug"}
