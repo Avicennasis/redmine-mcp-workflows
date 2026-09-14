@@ -1305,6 +1305,44 @@ async def redmine_today_time_entries(limit: int = 25, offset: int = 0) -> str:
 
 
 @mcp.tool()
+async def redmine_time_report(
+    from_date: str = "",
+    to_date: str = "",
+    project_id: int = 0,
+    user_id: int = 0,
+    group_by: str = "user",
+    max_entries: int = 1000,
+) -> str:
+    """Aggregate time entries over a date range, grouped by a dimension.
+
+    Args:
+        from_date / to_date: ``YYYY-MM-DD`` range bounds (``to`` inclusive).
+        project_id / user_id: optional 0 = no filter.
+        group_by: one of ``user`` (default), ``project``, ``activity``,
+            ``issue``.
+        max_entries: cap on entries fetched (default 1000); when hit, the
+            result sets ``truncated: true``.
+
+    Returns ``{from, to, group_by, total_hours, entry_count, truncated,
+    groups}``.
+    """
+
+    async def factory(client, cache):
+        return await time_entries.time_report(
+            client,
+            cache,
+            from_date=from_date or None,
+            to_date=to_date or None,
+            project_id=project_id or None,
+            user_id=user_id or None,
+            group_by=group_by,
+            max_entries=max_entries,
+        )
+
+    return await _wrap(factory)
+
+
+@mcp.tool()
 async def redmine_update_time_entry(
     time_entry_id: int,
     hours: str = "",
