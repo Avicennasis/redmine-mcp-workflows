@@ -17,16 +17,19 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from .tool_categories import filter_by_categories
+
 
 def filter_tool_names(
     names: Iterable[str],
     *,
+    categories: Iterable[str] = (),
     disabled: Iterable[str] = (),
     allowlist: Iterable[str] = (),
     denylist: Iterable[str] = (),
 ) -> set[str]:
     """Return the subset of ``names`` that survives the configured filters."""
-    allowed = set(names)
+    allowed = filter_by_categories(set(names), categories)
 
     allow_patterns = [re.compile(p) for p in allowlist if p]
     if allow_patterns:

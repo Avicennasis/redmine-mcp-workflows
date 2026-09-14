@@ -55,3 +55,14 @@ def test_denylist_wins_over_allowlist() -> None:
         denylist=[r"delete"],
     )
     assert out == {"redmine_get_issue"}
+
+
+def test_categories_gate_before_other_filters() -> None:
+    out = filter_tool_names(NAMES, categories=["issues"])
+    # Only the issue-named tools in NAMES survive; list_projects is not "issues".
+    assert out == {
+        "redmine_get_issue",
+        "redmine_search_issues",
+        "redmine_create_issue",
+        "redmine_delete_issue",
+    }

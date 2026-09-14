@@ -2776,6 +2776,7 @@ def apply_tool_filter(config: Config | None = None) -> set[str]:
     registered = set(mcp._tool_manager._tools)  # noqa: SLF001 — no public name iterator
     allowed = filter_tool_names(
         registered,
+        categories=cfg.features,
         disabled=cfg.disabled_tools,
         allowlist=cfg.tool_allowlist,
         denylist=cfg.tool_denylist,
