@@ -30,6 +30,7 @@ import datetime
 import json
 import logging
 import sys
+import time
 
 from mcp.server.fastmcp import FastMCP
 
@@ -38,6 +39,7 @@ from .client import RedmineClient
 from .config import Config
 from .errors import ReadOnlyModeError, RedmineAPIError
 from .logging_utils import install_redaction
+from .metrics import METRICS
 from .tool_filter import filter_tool_names
 from .tools import (
     attachments,
@@ -221,6 +223,14 @@ def _normalize_cf_filters(
     return (parsed or None, None)
 
 
+def _caller_tool_name() -> str:
+    """Name of the tool wrapper calling ``_wrap`` (one frame up)."""
+    try:
+        return sys._getframe(2).f_code.co_name  # noqa: SLF001
+    except (AttributeError, ValueError):  # pragma: no cover - defensive
+        return "unknown"
+
+
 async def _wrap(coro_factory, *, write: bool = False):
     """Helper to wrap a tool coroutine factory and convert API errors to JSON.
 
@@ -228,19 +238,28 @@ async def _wrap(coro_factory, *, write: bool = False):
         coro_factory: ``async (client, cache) -> dict`` callable.
         write: when True, gate the call on ``Config.read_only``.
     """
-    cfg = _get_config()
-    if write and cfg.read_only:
-        return _dump(ReadOnlyModeError().as_dict())
-    cache = _get_cache()
+    name = _caller_tool_name()
+    started = time.perf_counter()
+    failed = False
     try:
-        async with RedmineClient(cfg) as client:
-            result = await coro_factory(client, cache)
-        return _dump(result)
-    except RedmineAPIError as e:
-        return _dump(e.as_structured())
-    except Exception as e:  # pragma: no cover - last-resort guard
-        log.exception("unexpected error in tool")
-        return _dump({"error": "internal_error", "hint": str(e)})
+        cfg = _get_config()
+        if write and cfg.read_only:
+            failed = True
+            return _dump(ReadOnlyModeError().as_dict())
+        cache = _get_cache()
+        try:
+            async with RedmineClient(cfg) as client:
+                result = await coro_factory(client, cache)
+            return _dump(result)
+        except RedmineAPIError as e:
+            failed = True
+            return _dump(e.as_structured())
+        except Exception as e:  # pragma: no cover - last-resort guard
+            failed = True
+            log.exception("unexpected error in tool")
+            return _dump({"error": "internal_error", "hint": str(e)})
+    finally:
+        METRICS.record(name, time.perf_counter() - started, error=failed)
 
 
 @mcp.tool()
@@ -2843,6 +2862,19 @@ async def redmine_health() -> str:
         return await health.health(client, cache)
 
     return await _wrap(factory)
+
+
+@mcp.tool()
+async def redmine_metrics(reset: bool = False) -> str:
+    """Return in-memory tool-call metrics (counts, errors, latency).
+
+    Aggregated per tool for the life of the process. Pass ``reset=True``
+    to clear the counters after reading.
+    """
+    snapshot = METRICS.snapshot()
+    if reset:
+        METRICS.reset()
+    return _dump(snapshot)
 
 
 async def _startup_healthcheck(cfg: Config) -> None:
