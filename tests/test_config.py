@@ -272,3 +272,15 @@ def test_tool_allowdeny_parsed_in_order() -> None:
     )
     assert cfg.tool_allowlist == (r"^redmine_(get|list)_.*",)
     assert cfg.tool_denylist == ("delete",)
+
+
+# ---- feature categories ----
+
+
+def test_features_default_empty() -> None:
+    assert Config.from_env(env={}).features == ()
+
+
+def test_features_parsed() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_FEATURES": "issues, wiki ,time"})
+    assert cfg.features == ("issues", "wiki", "time")
