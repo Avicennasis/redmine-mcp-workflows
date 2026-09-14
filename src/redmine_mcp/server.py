@@ -1049,7 +1049,9 @@ async def redmine_create_time_entry(
     Args:
         hours: required. Decimal (e.g. ``"2.5"``) or ``"H:MM"`` (e.g.
             ``"2:30"``). Pre-validated client-side.
-        issue_id: target issue. Either this or ``project_id`` is required.
+        issue_id: target issue. Either this or ``project_id`` is required
+            unless ``REDMINE_MCP_DEFAULT_TIME_ISSUE`` is configured, in
+            which case it is the fallback target.
         project_id: target project (when not logging against a specific
             issue). Ignored when ``issue_id`` is non-zero.
         activity: optional id or name (e.g. ``"Development"``); resolves
@@ -1067,6 +1069,7 @@ async def redmine_create_time_entry(
     son = spent_on if spent_on else None
     cmt = comments if comments else None
     uid = user_id if user_id else None
+    default_issue = _get_config().default_time_issue
 
     async def factory(client, cache):
         return await time_entries.create_time_entry(
@@ -1079,6 +1082,7 @@ async def redmine_create_time_entry(
             spent_on=son,
             comments=cmt,
             user_id=uid,
+            default_issue_id=default_issue,
         )
 
     return await _wrap(factory, write=True)

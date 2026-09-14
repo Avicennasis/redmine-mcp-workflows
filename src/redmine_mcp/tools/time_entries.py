@@ -70,6 +70,7 @@ async def create_time_entry(
     spent_on: str | None = None,
     comments: str | None = None,
     user_id: int | None = None,
+    default_issue_id: int | None = None,
 ) -> dict[str, Any]:
     """Create a time entry.
 
@@ -84,19 +85,28 @@ async def create_time_entry(
         comments: optional, max 1024 chars (server enforces).
         user_id: admin-only; otherwise the API ignores it and uses
             current user.
+        default_issue_id: fallback issue used when neither ``issue_id`` nor
+            ``project_id`` is supplied (e.g. a management/admin issue). Does
+            not override an explicit target.
     """
     if issue_id is None and project_id is None:
-        return {
-            "error": "validation_failed",
-            "errors": [
-                {
-                    "error": "required_field_missing",
-                    "hint": "One of issue_id or project_id is required for create_time_entry.",
-                    "field": "issue_id_or_project_id",
-                    "op": "create_time_entry",
-                }
-            ],
-        }
+        if default_issue_id is not None:
+            issue_id = default_issue_id
+        else:
+            return {
+                "error": "validation_failed",
+                "errors": [
+                    {
+                        "error": "required_field_missing",
+                        "hint": (
+                            "One of issue_id or project_id is required for "
+                            "create_time_entry (or set REDMINE_MCP_DEFAULT_TIME_ISSUE)."
+                        ),
+                        "field": "issue_id_or_project_id",
+                        "op": "create_time_entry",
+                    }
+                ],
+            }
 
     parsed_hours, hour_errs = field_validators.validate_hours(hours)
     if hour_errs:
