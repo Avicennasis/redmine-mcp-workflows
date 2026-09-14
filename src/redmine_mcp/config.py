@@ -110,6 +110,8 @@ class Config:
     switch_user: str | None = None
     # Cap on a serialized tool response in bytes; 0 = unlimited.
     max_response_bytes: int = 0
+    # Hostnames the client may contact; empty = any (current behaviour).
+    allowed_hosts: tuple[str, ...] = ()
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -160,6 +162,7 @@ class Config:
             max_response_bytes=max(
                 0, _parse_optional_int(e.get("REDMINE_MCP_MAX_RESPONSE_BYTES")) or 0
             ),
+            allowed_hosts=_parse_list(e.get("REDMINE_MCP_ALLOWED_HOSTS")),
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),

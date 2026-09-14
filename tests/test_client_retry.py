@@ -251,3 +251,24 @@ def test_extra_headers_cannot_override_switch_user(monkeypatch: pytest.MonkeyPat
     )
     headers = httpx.Headers(_captured_httpx_kwargs(monkeypatch, cfg)["headers"])
     assert headers["X-Redmine-Switch-User"] == "alice"
+
+
+# ---------------------------------------------------------------------
+# host allow-list
+# ---------------------------------------------------------------------
+
+
+def test_client_accepts_url_when_host_allowed() -> None:
+    cfg = Config(api_key="k", redmine_url=URL, allowed_hosts=("trouble.example",))
+    RedmineClient(cfg)  # must not raise
+
+
+def test_client_rejects_disallowed_host() -> None:
+    cfg = Config(api_key="k", redmine_url=URL, allowed_hosts=("other.example",))
+    with pytest.raises(RedmineAPIError) as exc:
+        RedmineClient(cfg)
+    assert "ALLOWED_HOSTS" in exc.value.hint
+
+
+def test_client_allows_any_when_no_allowlist() -> None:
+    RedmineClient(Config(api_key="k", redmine_url=URL))
