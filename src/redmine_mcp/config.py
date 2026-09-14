@@ -56,6 +56,13 @@ def _parse_directories(raw: str | None) -> tuple[Path, ...]:
     return tuple(Path(p.strip()).expanduser() for p in raw.split(",") if p.strip())
 
 
+def _parse_names(raw: str | None) -> frozenset[str]:
+    """Parse a comma-separated list of tool names into a set."""
+    if not raw:
+        return frozenset()
+    return frozenset(item.strip() for item in raw.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Config:
     """Resolved runtime configuration.
@@ -84,6 +91,8 @@ class Config:
     # Fallback issue for time entries logged without an explicit target —
     # routes meetings/admin time to a management issue.
     default_time_issue: int | None = None
+    # Tool names to hide from the advertised surface at startup.
+    disabled_tools: frozenset[str] = frozenset()
     extra_headers: dict[str, str] = field(default_factory=dict)
     allowed_directories: tuple[Path, ...] = field(
         default_factory=lambda: tuple(Path(p) for p in DEFAULT_ALLOWED_DIRECTORIES)
@@ -126,6 +135,7 @@ class Config:
             else _truthy(e.get("REDMINE_MCP_SSL_VERIFY")),
             ca_bundle=(e.get("REDMINE_MCP_CA_BUNDLE") or "").strip() or None,
             default_time_issue=_parse_optional_int(e.get("REDMINE_MCP_DEFAULT_TIME_ISSUE")),
+            disabled_tools=_parse_names(e.get("REDMINE_MCP_DISABLED_TOOLS")),
             extra_headers=_parse_headers(e.get("REDMINE_HEADERS")),
             allowed_directories=_parse_directories(e.get("REDMINE_MCP_ALLOWED_DIRECTORIES")),
             log_level=e.get("REDMINE_MCP_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
