@@ -1343,6 +1343,41 @@ async def redmine_time_report(
 
 
 @mcp.tool()
+async def redmine_bulk_create_time_entries(
+    time_entries_specs: list,
+    pacing_seconds: float = 0.05,
+    stop_on_error: bool = False,
+) -> str:
+    """Create several time entries in one call (≤ 100).
+
+    Args:
+        time_entries_specs: list of dicts; each accepts the same fields as
+            ``redmine_create_time_entry`` (``hours`` required, rest
+            optional).
+        pacing_seconds: sleep between POSTs (default 50ms) to avoid the
+            per-issue rate cap; 0 disables.
+        stop_on_error: stop at the first failure; the remainder is reported
+            under ``skipped_for_stop_on_error``.
+
+    Returns ``{results, summary: {total, created, failed, skipped},
+    skipped_for_stop_on_error}``. Honors ``REDMINE_MCP_READ_ONLY``.
+    """
+    cfg = _get_config()
+
+    async def factory(client, cache):
+        return await time_entries.bulk_create_time_entries(
+            client,
+            cache,
+            entries=time_entries_specs,
+            pacing_seconds=pacing_seconds,
+            stop_on_error=stop_on_error,
+            default_issue_id=cfg.default_time_issue,
+        )
+
+    return await _wrap(factory, write=True)
+
+
+@mcp.tool()
 async def redmine_update_time_entry(
     time_entry_id: int,
     hours: str = "",
