@@ -219,6 +219,23 @@ class SchemaCache:
                 return schema
         return None
 
+    def get_project_by_id(self, project_id: int) -> dict[str, Any] | None:
+        """Look up a cached project by its numeric id.
+
+        Issue responses carry ``project: {id, name}`` but not the identifier
+        slug; enriching them from the cache by id avoids a name collision
+        (two projects can share a display name) and avoids an extra API call.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT fetched_at, schema_json FROM projects WHERE id = ?",
+                (project_id,),
+            )
+            row = cur.fetchone()
+        if row is None or self._is_stale(row["fetched_at"]):
+            return None
+        return json.loads(row["schema_json"])
+
     def put_project(self, project_id: int, identifier: str, schema: dict[str, Any]) -> None:
         with self._lock:
             self._conn.execute(

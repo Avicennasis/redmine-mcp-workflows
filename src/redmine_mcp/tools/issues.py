@@ -346,14 +346,40 @@ async def _apply_held(
 # ---------------------------------------------------------------------
 
 
+def _attach_project_identifier(cache: SchemaCache, issue: dict[str, Any]) -> dict[str, Any]:
+    """Add ``project.identifier`` to an issue from the project cache.
+
+    Redmine's ``/issues.json`` (and ``/issues/{id}.json``) returns
+    ``project: {id, name}`` only. Consumers that route on the slug otherwise
+    have to maintain a brittle name→slug map. Enrich from the cache by id
+    (falling back to display name) so no extra API call is needed; leave the
+    payload untouched when the project is not cached.
+    """
+    project = issue.get("project")
+    if not isinstance(project, dict) or project.get("identifier"):
+        return issue
+
+    record: dict[str, Any] | None = None
+    project_id = project.get("id")
+    if project_id is not None:
+        with contextlib.suppress(TypeError, ValueError):
+            record = cache.get_project_by_id(int(project_id))
+    if record is None and project.get("name"):
+        record = cache.get_project_by_name(str(project["name"]))
+    identifier = record.get("identifier") if record else None
+    if not identifier:
+        return issue
+    return {**issue, "project": {**project, "identifier": identifier}}
+
+
 async def get_issue(
     client: RedmineClient,
-    cache: SchemaCache,  # noqa: ARG001 — kept for signature parity with the other tools
+    cache: SchemaCache,
     issue_id: int,
     *,
     include: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch a single issue. No validation, no caching — straight passthrough."""
+    """Fetch a single issue, enriching ``project.identifier`` from the cache."""
     params = {"include": include if include is not None else DEFAULT_INCLUDE}
     payload = await client.get(f"/issues/{issue_id}.json", params=params)
     issue = payload.get("issue") if isinstance(payload, dict) else None
@@ -363,7 +389,7 @@ async def get_issue(
             "hint": f"Issue {issue_id} not found.",
             "issue_id": issue_id,
         }
-    return {"issue": issue, "source": "api"}
+    return {"issue": _attach_project_identifier(cache, issue), "source": "api"}
 
 
 async def create_issue(
@@ -983,6 +1009,7 @@ async def search_issues(
 
     payload = await client.get("/issues.json", params=params)
     issues = payload.get("issues", []) if isinstance(payload, dict) else []
+    issues = [_attach_project_identifier(cache, issue) for issue in issues]
     total = payload.get("total_count", len(issues)) if isinstance(payload, dict) else len(issues)
     return {
         "issues": issues,

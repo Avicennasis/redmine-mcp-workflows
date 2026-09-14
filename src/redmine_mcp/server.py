@@ -514,7 +514,8 @@ async def redmine_get_issue(issue_id: int, include: str = "") -> str:
             ``"attachments,journals,relations,watchers"``). Pass an empty
             string to use the default.
 
-    Read-only — no validation, no caching.
+        Read-only — no workflow validation. ``project.identifier`` is
+        enriched from the project cache when available.
     """
     inc = include if include else None
 
@@ -850,7 +851,9 @@ async def redmine_search_issues(
         limit: page size (capped at 100).
         offset: skip the first N results.
 
-    Returns ``{issues, total_count, limit, offset, query}``.
+    Returns ``{issues, total_count, limit, offset, query}``. Each issue's
+    ``project`` object carries ``identifier`` (slug) when the project is
+    known to the cache, so consumers need not map name → slug.
     """
     q = query if query else None
     proj: int | str | None = project if project else None

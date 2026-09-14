@@ -136,6 +136,37 @@ async def test_get_issue_returns_not_found_when_payload_empty(cache: SchemaCache
     assert result["issue_id"] == 99
 
 
+async def test_get_issue_enriches_project_identifier_from_cache(cache: SchemaCache) -> None:
+    _seed_tracker_and_project(cache)  # project id=15, identifier=claudecode
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): {
+                "issue": {"id": 42, "project": {"id": 15, "name": "ClaudeCode"}},
+            },
+        }
+    )
+    result = await issues.get_issue(client, cache, 42)
+    assert result["issue"]["project"] == {
+        "id": 15,
+        "name": "ClaudeCode",
+        "identifier": "claudecode",
+    }
+    # Enrichment must come from the cache, not an extra API call.
+    assert client.calls == [("GET", "/issues/42.json", {"include": issues.DEFAULT_INCLUDE})]
+
+
+async def test_get_issue_leaves_project_when_not_cached(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): {
+                "issue": {"id": 42, "project": {"id": 999, "name": "Uncached"}},
+            },
+        }
+    )
+    result = await issues.get_issue(client, cache, 42)
+    assert result["issue"]["project"] == {"id": 999, "name": "Uncached"}
+
+
 # ---------------------------------------------------------------------
 # create_issue
 # ---------------------------------------------------------------------
@@ -1217,6 +1248,24 @@ async def test_search_issues_resolves_project_slug_to_id(cache: SchemaCache) -> 
     assert result["total_count"] == 0
     sent = client.calls[-1][2]
     assert sent["project_id"] == 15
+
+
+async def test_search_issues_enriches_project_identifier(cache: SchemaCache) -> None:
+    _seed_tracker_and_project(cache)  # project id=15, identifier=claudecode
+    client = FakeClient(
+        {
+            ("GET", "/issues.json"): {
+                "issues": [
+                    {"id": 1, "project": {"id": 15, "name": "ClaudeCode"}},
+                    {"id": 2, "project": {"id": 999, "name": "Uncached"}},
+                ],
+                "total_count": 2,
+            },
+        }
+    )
+    result = await issues.search_issues(client, cache, query="x")
+    assert result["issues"][0]["project"]["identifier"] == "claudecode"
+    assert result["issues"][1]["project"] == {"id": 999, "name": "Uncached"}
 
 
 async def test_search_issues_passes_open_status_token_through(cache: SchemaCache) -> None:
