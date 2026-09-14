@@ -111,6 +111,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     "redmine_invalidate_cache": "admin",
     "redmine_request": "admin",
     "redmine_health": "admin",
+    "redmine_metrics": "admin",
 }
 
 ALL_CATEGORIES = frozenset(TOOL_CATEGORIES.values())
