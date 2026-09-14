@@ -118,6 +118,11 @@ async def test_list_relations_404_surfaces(cache: SchemaCache) -> None:
 # ---------------------------------------------------------------------
 
 
+def _post_call(client: FakeClient) -> tuple[str, str, Any]:
+    """Return the POST call (cycle pre-flight may issue GETs first)."""
+    return next(c for c in client.calls if c[0] == "POST")
+
+
 async def test_add_relation_happy_path_blocks(cache: SchemaCache) -> None:
     client = FakeClient(
         {
@@ -141,7 +146,7 @@ async def test_add_relation_happy_path_blocks(cache: SchemaCache) -> None:
     )
     assert result["relation"]["id"] == 7
     assert result["relation"]["relation_type"] == "blocks"
-    payload = client.calls[0][2]
+    payload = _post_call(client)[2]
     assert payload == {
         "relation": {"issue_to_id": 99, "relation_type": "blocks"},
     }
@@ -184,7 +189,7 @@ async def test_add_relation_normalizes_blocked_by(cache: SchemaCache) -> None:
         target_issue_id=99,
         relation_type="blocked_by",
     )
-    assert client.calls[0][2]["relation"]["relation_type"] == "blocked"
+    assert _post_call(client)[2]["relation"]["relation_type"] == "blocked"
 
 
 async def test_add_relation_rejects_unknown_type(cache: SchemaCache) -> None:
@@ -219,7 +224,7 @@ async def test_add_relation_passes_delay_for_precedes(cache: SchemaCache) -> Non
         relation_type="precedes",
         delay=5,
     )
-    payload = client.calls[0][2]["relation"]
+    payload = _post_call(client)[2]["relation"]
     assert payload["delay"] == 5
 
 
@@ -236,7 +241,7 @@ async def test_add_relation_omits_delay_when_none(cache: SchemaCache) -> None:
         target_issue_id=99,
         relation_type="blocks",
     )
-    payload = client.calls[0][2]["relation"]
+    payload = _post_call(client)[2]["relation"]
     assert "delay" not in payload
 
 
@@ -344,3 +349,83 @@ async def test_set_parent_issue_404_surfaces(cache: SchemaCache) -> None:
         parent_issue_id=42,
     )
     assert result["error"] == "redmine_api_404"
+
+
+async def test_add_relation_blocks_detects_cycle(cache: SchemaCache) -> None:
+    """42 blocks 99 would cycle if 99 already blocks 42."""
+    client = FakeClient(
+        {
+            ("GET", "/issues/99/relations.json"): {
+                "relations": [
+                    {"issue_id": 99, "issue_to_id": 42, "relation_type": "blocks"},
+                ]
+            },
+        }
+    )
+    result = await relations.add_relation(
+        client, cache, issue_id=42, target_issue_id=99, relation_type="blocks"
+    )
+    assert result["error"] == "relation_cycle"
+    assert not any(c[0] == "POST" for c in client.calls)
+
+
+async def test_add_relation_blocks_detects_transitive_cycle(cache: SchemaCache) -> None:
+    """42 blocks 99 via chain 99 blocks 7 blocks 42."""
+    client = FakeClient(
+        {
+            ("GET", "/issues/99/relations.json"): {
+                "relations": [
+                    {"issue_id": 99, "issue_to_id": 7, "relation_type": "blocks"},
+                ]
+            },
+            ("GET", "/issues/7/relations.json"): {
+                "relations": [
+                    {"issue_id": 7, "issue_to_id": 42, "relation_type": "blocks"},
+                ]
+            },
+        }
+    )
+    result = await relations.add_relation(
+        client, cache, issue_id=42, target_issue_id=99, relation_type="blocks"
+    )
+    assert result["error"] == "relation_cycle"
+
+
+async def test_add_relation_blocks_allows_acyclic(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/issues/99/relations.json"): {"relations": []},
+            ("POST", "/issues/42/relations.json"): {"relation": {"id": 1}},
+        }
+    )
+    result = await relations.add_relation(
+        client, cache, issue_id=42, target_issue_id=99, relation_type="blocks"
+    )
+    assert result["relation"]["id"] == 1
+
+
+async def test_add_relation_ignores_inverse_edges_for_cycle(cache: SchemaCache) -> None:
+    """A 'blocked' edge from 99 back to 42 must not be read as '99 blocks 42'."""
+    client = FakeClient(
+        {
+            ("GET", "/issues/99/relations.json"): {
+                "relations": [
+                    {"issue_id": 99, "issue_to_id": 42, "relation_type": "blocked"},
+                ]
+            },
+            ("POST", "/issues/42/relations.json"): {"relation": {"id": 1}},
+        }
+    )
+    result = await relations.add_relation(
+        client, cache, issue_id=42, target_issue_id=99, relation_type="blocks"
+    )
+    assert result["relation"]["id"] == 1
+
+
+async def test_add_relation_relates_skips_cycle_check(cache: SchemaCache) -> None:
+    client = FakeClient({("POST", "/issues/42/relations.json"): {"relation": {"id": 1}}})
+    result = await relations.add_relation(
+        client, cache, issue_id=42, target_issue_id=99, relation_type="relates"
+    )
+    assert result["relation"]["id"] == 1
+    assert not any(c[0] == "GET" for c in client.calls)
