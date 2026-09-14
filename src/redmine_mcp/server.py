@@ -151,7 +151,24 @@ def _get_cache() -> SchemaCache:
 
 
 def _dump(value: object) -> str:
-    return json.dumps(value, indent=2, default=str)
+    text = json.dumps(value, indent=2, default=str)
+    cap = _config.max_response_bytes if _config is not None else 0
+    if cap and len(text) > cap:
+        return json.dumps(
+            {
+                "_truncated": True,
+                "_original_bytes": len(text.encode("utf-8")),
+                "_limit_bytes": cap,
+                "_hint": (
+                    "Response exceeded REDMINE_MCP_MAX_RESPONSE_BYTES. Narrow the "
+                    "query (project/status filter, smaller limit) for the full result."
+                ),
+                "preview": text[:cap],
+            },
+            indent=2,
+            default=str,
+        )
+    return text
 
 
 def _normalize_custom_fields(

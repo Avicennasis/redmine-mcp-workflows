@@ -300,3 +300,20 @@ def test_switch_user_parsed_and_trimmed() -> None:
 
 def test_switch_user_blank_is_none() -> None:
     assert Config.from_env(env={"REDMINE_MCP_SWITCH_USER": "   "}).switch_user is None
+
+
+# ---- response size cap ----
+
+
+def test_max_response_bytes_default_zero() -> None:
+    assert Config.from_env(env={}).max_response_bytes == 0
+
+
+def test_max_response_bytes_parsed() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_MAX_RESPONSE_BYTES": "1000"})
+    assert cfg.max_response_bytes == 1000
+
+
+def test_max_response_bytes_garbage_is_zero() -> None:
+    cfg = Config.from_env(env={"REDMINE_MCP_MAX_RESPONSE_BYTES": "nope"})
+    assert cfg.max_response_bytes == 0
