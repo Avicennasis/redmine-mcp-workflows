@@ -32,7 +32,7 @@ import logging
 import sys
 import time
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 
 from .cache.schema_db import SchemaCache
 from .client import RedmineClient
@@ -1080,6 +1080,49 @@ async def redmine_download_attachment(
         )
 
     return await _wrap(factory)
+
+
+@mcp.tool()
+async def redmine_view_attachment(
+    attachment_id: int,
+    max_bytes: int = 5000000,
+):
+    """Return an image attachment inline so a model can see it.
+
+    PNG/JPEG/GIF/WebP attachments are returned as MCP image content. Other
+    types, or images larger than ``max_bytes`` (default 5 MB), return a
+    structured error pointing at ``redmine_download_attachment``.
+
+    Args:
+        attachment_id: numeric Redmine attachment id.
+        max_bytes: inline size ceiling; larger images are refused.
+    """
+    started = time.perf_counter()
+    failed = False
+    try:
+        cfg = _get_config()
+        cache = _get_cache()
+        async with RedmineClient(cfg) as client:
+            result = await attachments.view_attachment(
+                client, cache, attachment_id, max_bytes=max_bytes
+            )
+        if isinstance(result, dict) and "error" in result:
+            failed = True
+            return _dump(result)
+        return Image(data=result["image"], format=result["format"])
+    except RedmineAPIError as e:
+        failed = True
+        return _dump(e.as_structured())
+    except Exception as e:  # pragma: no cover - last-resort guard
+        failed = True
+        log.exception("unexpected error in redmine_view_attachment")
+        return _dump({"error": "internal_error", "hint": str(e)})
+    finally:
+        METRICS.record(
+            "redmine_view_attachment",
+            time.perf_counter() - started,
+            error=failed,
+        )
 
 
 @mcp.tool()

@@ -32,6 +32,7 @@ import asyncio
 import mimetypes
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from ..cache.schema_db import SchemaCache
 from ..client import RedmineClient
@@ -328,12 +329,13 @@ async def download_attachment(
             "body": meta_resp,
         }
 
-    filename = meta["filename"]
+    filename = str(meta["filename"])
     expected_size = meta.get("filesize")
     content_type = meta.get("content_type") or "application/octet-stream"
 
     try:
-        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename}")
+        filename_segment = quote(filename, safe="")
+        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename_segment}")
     except RedmineAPIError as e:
         return e.as_structured()
 
@@ -367,5 +369,104 @@ async def download_attachment(
         "filename": filename,
         "content_type": content_type,
         "attachment_id": attachment_id,
+        "source": "api",
+    }
+
+
+# Formats FastMCP can render inline. Keyed by base MIME type.
+IMAGE_FORMATS: dict[str, str] = {
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "image/jpg": "jpeg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+DEFAULT_MAX_IMAGE_BYTES = 5_000_000
+
+
+def image_format(content_type: str | None) -> str | None:
+    """Map a MIME type to a FastMCP image format, or ``None`` if not an image."""
+    base = (content_type or "").split(";")[0].strip().lower()
+    return IMAGE_FORMATS.get(base)
+
+
+async def view_attachment(
+    client: RedmineClient,
+    cache: SchemaCache,  # noqa: ARG001 — signature parity
+    attachment_id: int,
+    *,
+    max_bytes: int = DEFAULT_MAX_IMAGE_BYTES,
+) -> dict[str, Any]:
+    """Fetch an image attachment for inline display.
+
+    Returns ``{"image": bytes, "format": str, ...}`` for a supported image,
+    or a structured error (non-image, too large) telling the caller to use
+    ``download_attachment`` instead.
+    """
+    try:
+        meta_resp = await client.get(f"/attachments/{attachment_id}.json")
+    except RedmineAPIError as e:
+        return e.as_structured()
+    meta = (meta_resp or {}).get("attachment") if isinstance(meta_resp, dict) else None
+    if not isinstance(meta, dict) or "filename" not in meta:
+        return {
+            "error": "attachment_metadata_malformed",
+            "hint": f"Redmine /attachments/{attachment_id}.json did not return a filename.",
+            "body": meta_resp,
+        }
+
+    filename = str(meta["filename"])
+    content_type = meta.get("content_type") or ""
+    fmt = image_format(content_type)
+    if fmt is None:
+        return {
+            "error": "attachment_not_image",
+            "hint": (
+                f"{filename!r} has content type {content_type!r}; only "
+                f"{sorted(set(IMAGE_FORMATS.values()))} render inline. "
+                "Use redmine_download_attachment to save it."
+            ),
+            "attachment_id": attachment_id,
+            "content_type": content_type,
+        }
+
+    expected_size = meta.get("filesize")
+    if isinstance(expected_size, int) and expected_size > max_bytes:
+        return {
+            "error": "attachment_too_large",
+            "hint": (
+                f"{filename!r} is {expected_size} bytes (limit {max_bytes}); "
+                "use redmine_download_attachment to save it."
+            ),
+            "attachment_id": attachment_id,
+            "size": expected_size,
+            "max_bytes": max_bytes,
+        }
+
+    try:
+        filename_segment = quote(filename, safe="")
+        data = await client.get_binary(f"/attachments/download/{attachment_id}/{filename_segment}")
+    except RedmineAPIError as e:
+        return e.as_structured()
+
+    if len(data) > max_bytes:
+        return {
+            "error": "attachment_too_large",
+            "hint": (
+                f"Downloaded image is {len(data)} bytes (limit {max_bytes}); "
+                "use redmine_download_attachment to save it."
+            ),
+            "attachment_id": attachment_id,
+            "size": len(data),
+            "max_bytes": max_bytes,
+        }
+
+    return {
+        "image": data,
+        "format": fmt,
+        "filename": filename,
+        "content_type": content_type,
+        "attachment_id": attachment_id,
+        "size": len(data),
         "source": "api",
     }

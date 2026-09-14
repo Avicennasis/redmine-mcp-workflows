@@ -38,6 +38,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     # attachments
     "redmine_download_attachment": "attachments",
     "redmine_upload_attachment": "attachments",
+    "redmine_view_attachment": "attachments",
     # wiki
     "redmine_create_wiki_page": "wiki",
     "redmine_get_wiki_page": "wiki",
