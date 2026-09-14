@@ -125,6 +125,21 @@ def test_reused_cache_instance_is_returned(tmp_path: Path) -> None:
     assert server._get_cache() is server._get_cache()
 
 
+def test_switch_user_change_wipes_permission_cache(tmp_path: Path) -> None:
+    server._config = Config(api_key="api-K", switch_user="alice", cache_dir=tmp_path)
+    first = server._get_cache()
+    first.put_tracker(1, "Bug", {"id": 1, "name": "Bug"})
+    alice_fingerprint = _persisted_fingerprint(first)
+    first.close()
+
+    server._cache = None
+    server._config = Config(api_key="api-K", switch_user="bob", cache_dir=tmp_path)
+    second = server._get_cache()
+
+    assert _persisted_fingerprint(second) != alice_fingerprint
+    assert second.get_tracker(1) is None
+
+
 def test_sqlite_read_is_via_the_public_connection() -> None:
     """Guard: the fingerprint really lives in cache_meta (not in RAM only).
 

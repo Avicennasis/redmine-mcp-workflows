@@ -78,17 +78,21 @@ class RedmineClient:
 
     def __init__(self, config: Config, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> None:
         self._config = config
-        headers = {
-            "Accept": "application/json",
-            "User-Agent": "redmine-mcp-workflows/1.0",
-        }
+        headers = httpx.Headers(
+            {
+                "Accept": "application/json",
+                "User-Agent": "redmine-mcp-workflows/1.0",
+            }
+        )
         # OAuth bearer if available, otherwise X-Redmine-API-Key; raises if
         # neither is configured.
         headers.update(config.require_auth_headers())
+        # Preserve the existing escape hatch for custom/proxy Authorization
+        # headers, but keep the dedicated switch-user setting authoritative.
+        headers.update(config.extra_headers)
         if config.switch_user:
             # Redmine admin impersonation: act as another login.
             headers["X-Redmine-Switch-User"] = config.switch_user
-        headers.update(config.extra_headers)
         self._client = httpx.AsyncClient(
             base_url=config.redmine_url,
             headers=headers,
