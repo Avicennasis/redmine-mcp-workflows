@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -41,11 +44,26 @@ def _retry_delay(resp: httpx.Response | None, attempt: int) -> float:
         raw = resp.headers.get("Retry-After")
         if raw:
             try:
-                return min(float(raw), MAX_RETRY_AFTER_SECONDS)
+                delay = float(raw)
             except ValueError:
-                # HTTP-date form — fall back to exponential backoff.
-                pass
+                try:
+                    retry_at = parsedate_to_datetime(raw)
+                    if retry_at.tzinfo is None:
+                        retry_at = retry_at.replace(tzinfo=UTC)
+                    delay = (retry_at - datetime.now(UTC)).total_seconds()
+                except (TypeError, ValueError, OverflowError):
+                    delay = float("nan")
+            if math.isfinite(delay):
+                return min(max(delay, 0.0), MAX_RETRY_AFTER_SECONDS)
     return RETRY_BACKOFF_SECONDS * (2**attempt)
+
+
+def _origin(url: httpx.URL) -> tuple[str, str, int | None]:
+    """Return the URL origin, normalizing default ports."""
+    port = url.port
+    if port is None:
+        port = {"http": 80, "https": 443}.get(url.scheme)
+    return (url.scheme.lower(), url.host.lower(), port)
 
 
 class RedmineClient:
@@ -123,13 +141,7 @@ class RedmineClient:
                     hint="Network error reaching Redmine.",
                 ) from e
 
-            if (
-                resp.status_code in RETRYABLE_STATUS
-                and attempt < MAX_RETRIES
-                # 429 means the request was rejected unprocessed, so it is
-                # safe to re-send even for POST/PUT/DELETE.
-                and (idempotent or resp.status_code == 429)
-            ):
+            if resp.status_code in RETRYABLE_STATUS and attempt < MAX_RETRIES and idempotent:
                 log.debug("retrying %s %s (status %s)", method, path, resp.status_code)
                 await asyncio.sleep(_retry_delay(resp, attempt))
                 continue
@@ -203,14 +215,14 @@ class RedmineClient:
         """
         base = httpx.URL(self._config.redmine_url)
         resolved = base.join(path)
-        if resolved.host != base.host:
+        if _origin(resolved) != _origin(base):
             raise RedmineAPIError(
                 status_code=0,
-                body=f"refused cross-host binary fetch: {path!r}",
+                body=f"refused cross-origin binary fetch: {path!r}",
                 hint=(
-                    "get_binary only fetches from the configured Redmine host "
-                    f"({base.host!r}); refusing to send credentials to "
-                    f"{resolved.host!r}."
+                    "get_binary only fetches from the configured Redmine origin "
+                    f"({_origin(base)!r}); refusing to send credentials to "
+                    f"{_origin(resolved)!r}."
                 ),
             )
         return await self._request("GET", path, binary=True)

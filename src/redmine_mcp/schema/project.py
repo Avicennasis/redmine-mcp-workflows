@@ -36,13 +36,14 @@ async def describe_project(
     fall back to a name lookup, not bubble a generic 404.
     """
     ident_str = str(project_ident)
+    ident_segment = quote(ident_str, safe="")
 
     cached = cache.get_project(ident_str)
     if cached is not None:
         return {**cached, "source": "cache"}
 
     try:
-        payload = await client.get(f"/projects/{ident_str}.json", params={"include": _INCLUDE})
+        payload = await client.get(f"/projects/{ident_segment}.json", params={"include": _INCLUDE})
     except RedmineAPIError as e:
         if e.status_code == 404:
             return {
@@ -171,7 +172,10 @@ async def resolve_project_id(
     by_name = cache.get_project_by_name(ident_str)
     if by_name is not None:
         return _try_int(by_name.get("id"))
-    listing = await list_projects(client, limit=100)
+    # The unfiltered endpoint returns only its first page here. Use the local
+    # filtering path so display names beyond the first 100 projects can still
+    # resolve (up to list_projects' documented safety cap).
+    listing = await list_projects(client, query=ident_str, limit=100)
     target = ident_str.strip().lower()
     for project in listing.get("projects", []):
         if str(project.get("name", "")).strip().lower() == target:

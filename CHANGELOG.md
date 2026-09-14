@@ -18,10 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on 5xx/transport errors, so a `POST /issues.json` that committed before its
   response was lost could create duplicates (up to 3). Retries are now limited
   to idempotent methods (`GET`/`HEAD`/`OPTIONS`).
-- **`429` handling.** `429` is now retryable for any method (the request was
-  rejected unprocessed, so re-sending cannot duplicate a write) and
-  `Retry-After` is honored — capped at 60s, falling back to exponential backoff
-  for the HTTP-date form.
+- **`429` handling.** `429` now participates in the idempotent-method retry
+  policy and `Retry-After` is honored in both delta-seconds and HTTP-date forms,
+  capped at 60s. Non-idempotent writes remain single-shot because an
+  intermediary can return an ambiguous response after forwarding a request.
 - **Project references in `search`/`news`/`versions` are resolved and
   URL-encoded.** A display name (e.g. the `project.name` from a prior issue
   response) now resolves to a numeric id, and an unresolvable value cannot
@@ -39,8 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Held / Held Until / Difficulty fields so a renamed or localized Redmine
   does not silently disable the hold gate or the difficulty default-fill. When
   unset, the fields are still discovered by their English names.
-- **Same-host guard on `RedmineClient.get_binary`.** An absolute URL pointing at
-  a different host is refused rather than sent this client's auth headers.
+- **Same-origin guard on `RedmineClient.get_binary`.** An absolute URL pointing
+  at a different scheme, host, or port is refused rather than sent this
+  client's auth headers.
 
 ### Changed
 - **BREAKING: `held` now takes the reason, not a boolean.** `held=True` wrote

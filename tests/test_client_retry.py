@@ -3,10 +3,9 @@
 Locks in the two behaviours that protect against duplicate writes:
 
   * only idempotent methods are retried on a 5xx or a transport error, and
-  * ``429`` is retried for any method (the request was rejected unprocessed),
-    honoring ``Retry-After``.
+  * ``429`` is retried only for idempotent methods, honoring ``Retry-After``.
 
-Also covers the same-host guard on :meth:`RedmineClient.get_binary`.
+Also covers the same-origin guard on :meth:`RedmineClient.get_binary`.
 """
 
 from __future__ import annotations
@@ -111,31 +110,23 @@ async def test_post_is_not_retried_on_transport_error() -> None:
     assert len(transport.calls) == 1
 
 
-async def test_post_retries_429() -> None:
-    client, transport = _client(
-        [
-            _resp(429, headers={"Retry-After": "0"}),
-            _resp(201, json={"issue": {"id": 7}}),
-        ]
-    )
-    assert await client.post("/issues.json", json={"issue": {"subject": "x"}}) == {
-        "issue": {"id": 7}
-    }
-    assert len(transport.calls) == 2
-
-
-async def test_post_does_not_retry_429_after_exhaustion() -> None:
-    client, transport = _client(
-        [
-            _resp(429, headers={"Retry-After": "0"}),
-            _resp(429, headers={"Retry-After": "0"}),
-            _resp(429, headers={"Retry-After": "0"}),
-        ]
-    )
+async def test_post_does_not_retry_429() -> None:
+    client, transport = _client([_resp(429, headers={"Retry-After": "0"})])
     with pytest.raises(RedmineAPIError) as exc:
-        await client.post("/issues.json", json={})
+        await client.post("/issues.json", json={"issue": {"subject": "x"}})
     assert exc.value.status_code == 429
-    assert len(transport.calls) == 3
+    assert len(transport.calls) == 1
+
+
+async def test_get_retries_429_then_succeeds() -> None:
+    client, transport = _client(
+        [
+            _resp(429, headers={"Retry-After": "0"}),
+            _resp(200, json={"ok": True}),
+        ]
+    )
+    assert await client.get("/things.json") == {"ok": True}
+    assert len(transport.calls) == 2
 
 
 # ---------------------------------------------------------------------
@@ -151,9 +142,20 @@ def test_retry_delay_caps_absurd_retry_after() -> None:
     assert _retry_delay(_resp(429, headers={"Retry-After": "99999"}), 0) == 60.0
 
 
-def test_retry_delay_falls_back_to_backoff_for_http_date() -> None:
+def test_retry_delay_honors_http_date() -> None:
     resp = _resp(503, headers={"Retry-After": "Wed, 21 Oct 2099 07:28:00 GMT"})
-    assert _retry_delay(resp, 1) == client_module.RETRY_BACKOFF_SECONDS * 2
+    assert _retry_delay(resp, 1) == 60.0
+
+
+def test_retry_delay_clamps_negative_seconds() -> None:
+    assert _retry_delay(_resp(429, headers={"Retry-After": "-5"}), 0) == 0.0
+
+
+def test_retry_delay_rejects_non_finite_seconds() -> None:
+    assert (
+        _retry_delay(_resp(429, headers={"Retry-After": "nan"}), 1)
+        == client_module.RETRY_BACKOFF_SECONDS * 2
+    )
 
 
 def test_retry_delay_backoff_without_header() -> None:
@@ -175,5 +177,19 @@ async def test_get_binary_refuses_cross_host_url() -> None:
     client, transport = _client([_resp(200, content=b"should-not-fetch")])
     with pytest.raises(RedmineAPIError) as exc:
         await client.get_binary("https://evil.example/steal")
-    assert "cross-host" in str(exc.value.body)
+    assert "cross-origin" in str(exc.value.body)
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://trouble.example/steal",
+        "https://trouble.example:8443/steal",
+    ],
+)
+async def test_get_binary_refuses_same_host_different_origin(url: str) -> None:
+    client, transport = _client([_resp(200, content=b"should-not-fetch")])
+    with pytest.raises(RedmineAPIError):
+        await client.get_binary(url)
     assert transport.calls == []

@@ -263,6 +263,18 @@ async def test_describe_project_handles_404_shaped_payload(cache: SchemaCache) -
     assert result.get("error") == "project_not_found"
 
 
+@pytest.mark.asyncio
+async def test_describe_project_percent_encodes_identifier(cache: SchemaCache) -> None:
+    client = FakeClient(
+        {
+            ("GET", "/projects/1%3Fstatus_id%3D%2A.json"): {"project": None},
+        }
+    )
+    result = await project_schema.describe_project(client, cache, "1?status_id=*")
+    assert result.get("error") == "project_not_found"
+    assert all("?" not in path for _, path, _ in client.calls)
+
+
 # ---- project_schema.list_projects --------------------------------------
 
 

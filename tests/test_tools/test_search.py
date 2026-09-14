@@ -137,6 +137,7 @@ async def test_search_unresolvable_project_is_percent_encoded(cache):
     await search.search(client, cache, query="test", project="1?status_id=*")
     # The '?' must not leak into the URL as a query separator.
     assert client.calls[-1][1] == "/projects/1%3Fstatus_id%3D%2A/search.json"
+    assert all("?" not in path for _, path, _ in client.calls)
 
 
 async def test_search_reports_applied_limit(cache):
