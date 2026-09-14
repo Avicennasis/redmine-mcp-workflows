@@ -48,15 +48,21 @@ class RedactingFilter(logging.Filter):
             # may themselves hold the secret) are not re-rendered.
             record.msg = redacted
             record.args = ()
+        if record.exc_info is not None:
+            # Formatters render exc_info *after* filters run, so redacting only
+            # record.getMessage() still leaks credentials embedded in an
+            # exception message/traceback. Seed the formatter's cached text
+            # with a scrubbed version so every handler emits the safe copy.
+            exc_text = record.exc_text or logging.Formatter().formatException(record.exc_info)
+            record.exc_text = redact(exc_text, self._secrets)
         return True
 
 
 def install_redaction(secrets: Iterable[str] = ()) -> RedactingFilter:
     """Attach a :class:`RedactingFilter` to every root handler.
 
-    Idempotent per call site: returns the installed filter so callers can
-    keep a reference. Safe to call when no handlers are configured yet —
-    it also installs on the root logger directly.
+    Returns the installed filter so callers can keep a reference. The server
+    configures its root handler before calling this function.
     """
     filt = RedactingFilter(secrets)
     root = logging.getLogger()

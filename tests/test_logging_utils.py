@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from redmine_mcp.logging_utils import REDACTED, RedactingFilter, install_redaction, redact
 
@@ -42,6 +43,27 @@ def test_filter_rewrites_record_before_formatting() -> None:
     RedactingFilter().filter(record)
     assert record.getMessage() == f"sending X-Redmine-API-Key: {REDACTED}"
     assert record.args == ()
+
+
+def test_filter_redacts_exception_traceback() -> None:
+    try:
+        raise RuntimeError("request failed with token=topsecret")
+    except RuntimeError:
+        exc_info = sys.exc_info()
+
+    record = logging.LogRecord(
+        "x",
+        logging.ERROR,
+        __file__,
+        1,
+        "request failed",
+        (),
+        exc_info,
+    )
+    RedactingFilter(("topsecret",)).filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert "topsecret" not in rendered
+    assert f"token={REDACTED}" in rendered
 
 
 def test_install_redaction_attaches_to_handlers_and_masks() -> None:
