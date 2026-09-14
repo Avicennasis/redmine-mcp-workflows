@@ -362,3 +362,32 @@ async def test_time_report_marks_truncated(cache: SchemaCache) -> None:
     result = await time_entries.time_report(client, cache, max_entries=2)
     assert result["truncated"] is True
     assert result["entry_count"] == 2
+
+
+@pytest.mark.parametrize("max_entries", [0, -1])
+async def test_time_report_rejects_nonpositive_cap(cache: SchemaCache, max_entries: int) -> None:
+    client = FakeClient()
+    result = await time_entries.time_report(client, cache, max_entries=max_entries)
+    assert result["error"] == "invalid_max_entries"
+    assert client.calls == []
+
+
+async def test_time_report_never_fetches_past_cap(cache: SchemaCache) -> None:
+    all_entries = [{"hours": 1.0, "user": {"name": "alice"}} for _ in range(200)]
+
+    class PaginatedClient(FakeClient):
+        async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+            self.calls.append(("GET", path, params))
+            assert params is not None
+            offset = params["offset"]
+            limit = params["limit"]
+            return {
+                "time_entries": all_entries[offset : offset + limit],
+                "total_count": len(all_entries),
+            }
+
+    client = PaginatedClient()
+    result = await time_entries.time_report(client, cache, max_entries=150)
+    assert result["entry_count"] == 150
+    assert result["truncated"] is True
+    assert [call[2]["limit"] for call in client.calls] == [100, 50]

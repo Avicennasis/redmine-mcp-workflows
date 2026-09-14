@@ -304,6 +304,12 @@ async def time_report(
             "hint": f"group_by must be one of {sorted(_GROUP_KEYS)}.",
             "group_by": group_by,
         }
+    if max_entries < 1:
+        return {
+            "error": "invalid_max_entries",
+            "hint": "max_entries must be at least 1.",
+            "max_entries": max_entries,
+        }
 
     base: dict[str, Any] = {}
     if from_date is not None:
@@ -318,8 +324,8 @@ async def time_report(
     entries: list[dict[str, Any]] = []
     truncated = False
     offset = 0
-    page_size = min(100, max_entries)
     while True:
+        page_size = min(100, max_entries - len(entries))
         params = {**base, "limit": page_size, "offset": offset}
         payload = await client.get("/time_entries.json", params=params)
         page = payload.get("time_entries", []) if isinstance(payload, dict) else []
