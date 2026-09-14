@@ -385,6 +385,14 @@ async def bulk_create_time_entries(
     /``comments``/``user_id`` optional). Results are per-entry; one failure
     does not abort the batch unless ``stop_on_error`` is set.
     """
+    if len(entries) > 100:
+        return {
+            "error": "batch_too_large",
+            "hint": "A bulk time-entry request may contain at most 100 entries.",
+            "count": len(entries),
+            "max_entries": 100,
+        }
+
     results: list[dict[str, Any]] = []
     created = failed = 0
     skipped_for_stop: list[Any] = []

@@ -456,3 +456,16 @@ async def test_bulk_create_uses_default_issue(cache: SchemaCache) -> None:
     )
     posted = client.calls[-1][2]["time_entry"]
     assert posted["issue_id"] == 777
+
+
+async def test_bulk_create_rejects_more_than_100_without_writes(cache: SchemaCache) -> None:
+    client = FakeClient()
+    result = await time_entries.bulk_create_time_entries(
+        client,
+        cache,
+        entries=[{"hours": 1.0}] * 101,
+        pacing_seconds=0,
+    )
+    assert result["error"] == "batch_too_large"
+    assert result["count"] == 101
+    assert client.calls == []
