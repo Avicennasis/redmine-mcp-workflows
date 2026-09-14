@@ -35,6 +35,7 @@ from .cache.schema_db import SchemaCache
 from .client import RedmineClient
 from .config import Config
 from .errors import ReadOnlyModeError, RedmineAPIError
+from .logging_utils import install_redaction
 from .tools import (
     attachments,
     bulk,
@@ -95,6 +96,9 @@ def _get_config() -> Config:
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
             stream=sys.stderr,
         )
+        # Mask credentials (configured key/token + auth headers) in all log
+        # output, including DEBUG.
+        install_redaction(secrets=(_config.api_key or "", _config.oauth_token or ""))
     return _config
 
 
