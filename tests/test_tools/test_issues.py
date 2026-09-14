@@ -1300,6 +1300,14 @@ async def test_search_issues_passes_assigned_to_filter(cache: SchemaCache) -> No
     assert client.calls[-1][2]["assigned_to_id"] == "me"
 
 
+async def test_search_issues_passes_parent_id_filter(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): {"issues": [], "total_count": 0}})
+    await issues.search_issues(client, cache, parent_id=42, assigned_to="me")
+    sent = client.calls[-1][2]
+    assert sent["parent_id"] == 42
+    assert sent["assigned_to_id"] == "me"
+
+
 async def test_search_issues_resolves_named_status(cache: SchemaCache) -> None:
     _seed_enums(cache)
     client = FakeClient(

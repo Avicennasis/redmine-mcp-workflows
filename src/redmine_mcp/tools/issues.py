@@ -942,6 +942,7 @@ async def search_issues(
     custom_fields: dict[str, Any] | None = None,
     sort: str | None = None,
     assigned_to: int | str | None = None,
+    parent_id: int | None = None,
     limit: int = 25,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -1013,6 +1014,8 @@ async def search_issues(
     if assigned_to is not None:
         # Redmine accepts a numeric user id or the literal ``me``.
         params["assigned_to_id"] = assigned_to
+    if parent_id is not None:
+        params["parent_id"] = parent_id
 
     payload = await client.get("/issues.json", params=params)
     issues = payload.get("issues", []) if isinstance(payload, dict) else []
