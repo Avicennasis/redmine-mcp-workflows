@@ -364,7 +364,10 @@ def _attach_project_identifier(cache: SchemaCache, issue: dict[str, Any]) -> dic
     if project_id is not None:
         with contextlib.suppress(TypeError, ValueError):
             record = cache.get_project_by_id(int(project_id))
-    if record is None and project.get("name"):
+    # A display name is not unique in Redmine. Only fall back to it for a
+    # legacy/malformed payload that omitted the reliable numeric id; doing so
+    # after an id miss can attach a different same-named project's slug.
+    elif project.get("name"):
         record = cache.get_project_by_name(str(project["name"]))
     identifier = record.get("identifier") if record else None
     if not identifier:

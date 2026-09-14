@@ -167,6 +167,21 @@ async def test_get_issue_leaves_project_when_not_cached(cache: SchemaCache) -> N
     assert result["issue"]["project"] == {"id": 999, "name": "Uncached"}
 
 
+async def test_get_issue_does_not_use_duplicate_name_after_id_miss(
+    cache: SchemaCache,
+) -> None:
+    _seed_tracker_and_project(cache)  # id=15, name=ClaudeCode
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): {
+                "issue": {"id": 42, "project": {"id": 999, "name": "ClaudeCode"}},
+            },
+        }
+    )
+    result = await issues.get_issue(client, cache, 42)
+    assert result["issue"]["project"] == {"id": 999, "name": "ClaudeCode"}
+
+
 # ---------------------------------------------------------------------
 # create_issue
 # ---------------------------------------------------------------------
