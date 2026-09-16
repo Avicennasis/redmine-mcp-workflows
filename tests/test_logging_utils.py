@@ -5,7 +5,13 @@ from __future__ import annotations
 import logging
 import sys
 
-from redmine_mcp.logging_utils import REDACTED, RedactingFilter, install_redaction, redact
+from redmine_mcp.logging_utils import (
+    REDACTED,
+    RedactingFilter,
+    install_redaction,
+    redact,
+    redact_value,
+)
 
 
 def test_redact_api_key_header() -> None:
@@ -85,3 +91,51 @@ def test_install_redaction_attaches_to_handlers_and_masks() -> None:
         assert captured[-1].getMessage() == f"token={REDACTED}"
     finally:
         root.removeHandler(handler)
+
+
+def test_redact_query_param_credentials() -> None:
+    out = redact("GET http://redmine.example/issues.json?key=abc123&limit=5")
+    assert "abc123" not in out
+    assert f"key={REDACTED}" in out
+    # The URL and non-secret params survive.
+    assert "http://redmine.example/issues.json" in out
+    assert "limit=5" in out
+
+
+def test_redact_common_credential_params() -> None:
+    for text in ("token=xyz", "password=hunter2", "access_token=abc", "client_secret=shh"):
+        out = redact(text)
+        assert REDACTED in out
+        assert out != text
+
+
+def test_redact_basic_auth_header() -> None:
+    out = redact("Authorization: Basic dXNlcjpwYXNz")
+    assert "dXNlcjpwYXNz" not in out
+    assert f"Authorization: Basic {REDACTED}" in out
+
+
+def test_redact_preserves_urls_hosts_and_paths() -> None:
+    text = "authelia at https://auth.gateway.simmons.systems blocked /issue_statuses.json"
+    assert redact(text) == text
+
+
+def test_redact_value_recurses_into_structures() -> None:
+    payload = {
+        "status_code": 401,
+        "body": {"errors": ["X-Redmine-API-Key: leaky-key"]},
+        "url": "http://redmine.example/issues.json?key=leaky-key",
+        "codes": [500, "token=leaky"],
+    }
+    out = redact_value(payload)
+    assert "leaky-key" not in str(out)
+    assert "leaky" not in str(out)
+    # Non-secret structure is preserved.
+    assert out["status_code"] == 401
+    assert out["url"].startswith("http://redmine.example/issues.json")
+    assert out["codes"][0] == 500
+
+
+def test_redact_value_known_secret_recurses() -> None:
+    out = redact_value({"a": ["bare-deadbeef"]}, secrets=["bare-deadbeef"])
+    assert out == {"a": [REDACTED]}

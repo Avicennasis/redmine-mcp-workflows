@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .logging_utils import redact, redact_value
+
 
 @dataclass
 class StructuredError:
@@ -25,7 +27,11 @@ class StructuredError:
         if self.hint:
             d["hint"] = self.hint
         d.update(self.extra)
-        return d
+        # Error payloads are the boundary between the server and the LLM
+        # context window: scrub credential-shaped strings here so no error
+        # path can leak an API key/token, while leaving URLs, hosts and field
+        # values intact for diagnostics.
+        return redact_value(d)
 
 
 # ---------------------------------------------------------------------
@@ -39,17 +45,25 @@ class RedmineAPIError(Exception):
     Carries enough context to render a structured MCP error.
     """
 
-    def __init__(self, status_code: int, body: Any, *, hint: str = "") -> None:
+    def __init__(
+        self,
+        status_code: int,
+        body: Any,
+        *,
+        hint: str = "",
+        secrets: tuple[str, ...] | list[str] = (),
+    ) -> None:
         self.status_code = status_code
         self.body = body
         self.hint = hint
-        super().__init__(f"Redmine API error {status_code}: {body!r}")
+        self._secrets = tuple(s for s in secrets if s)
+        super().__init__(redact(f"Redmine API error {status_code}: {body!r}", self._secrets))
 
     def as_structured(self) -> dict[str, Any]:
         err = StructuredError(
             error=f"redmine_api_{self.status_code}",
-            hint=self.hint or _hint_for_status(self.status_code, self.body),
-            extra={"status_code": self.status_code, "body": self.body},
+            hint=redact(self.hint or _hint_for_status(self.status_code, self.body), self._secrets),
+            extra={"status_code": self.status_code, "body": redact_value(self.body, self._secrets)},
         )
         return err.as_dict()
 
