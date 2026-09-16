@@ -26,6 +26,7 @@ errors get collected.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ..cache.schema_db import SchemaCache
@@ -43,6 +44,92 @@ DEFAULT_BULK_CREATE_PACING_S: float = 0.05
 # the entire instance. Redmine has no batch endpoint — these are sequential
 # PUTs — so the cap is a safety guardrail, not an API limit.
 MAX_BATCH_SIZE = 1000
+
+# Upper bound on parallel in-flight requests. Redmine rate-limits per issue,
+# so this stays deliberately modest; the default is 1 (sequential).
+MAX_CONCURRENCY = 50
+
+
+def _is_server_error(result: Any) -> bool:
+    """True if a per-item result is a 5xx API error."""
+    if not isinstance(result, dict):
+        return False
+    code = result.get("status_code")
+    return isinstance(code, int) and 500 <= code < 600
+
+
+def _check_concurrency(
+    concurrency: int,
+    pacing_seconds: float,
+) -> dict[str, Any] | None:
+    """Validate ``concurrency`` and its mutual exclusion with ``pacing_seconds``.
+
+    ``concurrency == 1`` (the default) is the legacy sequential path and keeps
+    ``pacing_seconds``. ``concurrency > 1`` runs bounded-parallel and cannot
+    also pace: the whole point of pacing is to bound the *per-issue* request
+    rate, which fan-out deliberately multiplies. The default pacing value is
+    treated as "not set", so ``concurrency=5`` alone is valid and simply
+    ignores pacing.
+    """
+    if concurrency < 1 or concurrency > MAX_CONCURRENCY:
+        return {
+            "error": "invalid_concurrency",
+            "hint": f"concurrency must be between 1 and {MAX_CONCURRENCY}.",
+            "concurrency": concurrency,
+        }
+    if concurrency > 1 and pacing_seconds not in (0.0, DEFAULT_BULK_CREATE_PACING_S):
+        return {
+            "error": "concurrency_pacing_conflict",
+            "hint": (
+                "concurrency > 1 is mutually exclusive with pacing_seconds: "
+                "pick one throttle. Leave pacing_seconds at its default (or 0) "
+                "to use concurrency, or set concurrency=1 to pace sequentially."
+            ),
+            "concurrency": concurrency,
+            "pacing_seconds": pacing_seconds,
+        }
+    return None
+
+
+async def _run_concurrent(
+    count: int,
+    worker: Callable[[int], Awaitable[dict[str, Any]]],
+    *,
+    concurrency: int,
+    should_abort: Callable[[dict[str, Any]], bool],
+) -> list[dict[str, Any] | None]:
+    """Run ``worker(i)`` for ``i`` in ``range(count)`` with bounded parallelism.
+
+    Returns a list the same length as the input, in input order; entries are
+    ``None`` for items that were never started because ``should_abort`` fired
+    on an earlier item. The shared cursor is advanced under a lock so each
+    index is claimed exactly once; ``should_abort`` is checked after each
+    result and stops workers from claiming further work.
+    """
+    results: list[dict[str, Any] | None] = [None] * count
+    if count == 0:
+        return results
+
+    abort = asyncio.Event()
+    cursor = 0
+    cursor_lock = asyncio.Lock()
+
+    async def runner() -> None:
+        nonlocal cursor
+        while not abort.is_set():
+            async with cursor_lock:
+                if abort.is_set() or cursor >= count:
+                    return
+                index = cursor
+                cursor += 1
+            result = await worker(index)
+            results[index] = result
+            if should_abort(result):
+                abort.set()
+
+    runners = [asyncio.create_task(runner()) for _ in range(min(concurrency, count))]
+    await asyncio.gather(*runners)
+    return results
 
 
 def _validation_error(hint: str, *, field: str = "issue_ids") -> dict[str, Any]:
@@ -94,6 +181,7 @@ async def bulk_update_issues(
     start_date: str | None = None,
     done_ratio: int | None = None,
     stop_on_error: bool = False,
+    concurrency: int = 1,
     difficulty_field_id: int | None = None,
     held_field_id: int | None = None,
     held_until_field_id: int | None = None,
@@ -102,10 +190,18 @@ async def bulk_update_issues(
 
     Returns ``{total, succeeded, failed, skipped}``. Each ``failed`` entry
     is ``{"issue_id": N, "error": "...", ...}`` — the underlying tool's
-    error payload, with ``issue_id`` injected. ``skipped`` is populated
-    only when ``stop_on_error=True`` aborts the batch early.
+    error payload, with ``issue_id`` injected. ``skipped`` holds ids that
+    were never attempted: the tail after ``stop_on_error``, or (when
+    ``concurrency > 1``) whatever had not started when a 5xx aborted the run.
+
+    ``concurrency`` (default 1) controls parallel in-flight PUTs. The default
+    keeps the legacy sequential behaviour; ``> 1`` runs a bounded fan-out via
+    ``asyncio.Semaphore`` and is mutually exclusive with pacing.
     """
     if (err := _check_batch_size(issue_ids)) is not None:
+        return err
+    # No pacing on this tool; pass 0 so only the range check applies.
+    if (err := _check_concurrency(concurrency, 0.0)) is not None:
         return err
 
     # Validate the hold reason ONCE, up front. update_issue would reject each
@@ -153,16 +249,41 @@ async def bulk_update_issues(
     failed: list[dict[str, Any]] = []
     skipped: list[int] = []
 
-    for idx, issue_id in enumerate(issue_ids):
-        result = await issues_module.update_issue(
+    async def update_one(index: int) -> dict[str, Any]:
+        return await issues_module.update_issue(
             client,
             cache,
-            issue_id,
+            issue_ids[index],
             **update_kwargs,
             difficulty_field_id=difficulty_field_id,
             held_field_id=held_field_id,
             held_until_field_id=held_until_field_id,
         )
+
+    if concurrency > 1:
+        results = await _run_concurrent(
+            len(issue_ids),
+            update_one,
+            concurrency=concurrency,
+            should_abort=lambda r: _is_server_error(r) or (stop_on_error and "error" in r),
+        )
+        for issue_id, result in zip(issue_ids, results, strict=False):
+            if result is None:
+                skipped.append(issue_id)
+            elif "error" in result:
+                failed.append({"issue_id": issue_id, **result})
+            else:
+                succeeded.append(issue_id)
+        return {
+            "total": len(issue_ids),
+            "succeeded": succeeded,
+            "failed": failed,
+            "skipped": skipped,
+            "concurrency": concurrency,
+        }
+
+    for idx, issue_id in enumerate(issue_ids):
+        result = await update_one(idx)
         if isinstance(result, dict) and "error" in result:
             failed.append({"issue_id": issue_id, **result})
             if stop_on_error:
@@ -230,6 +351,7 @@ async def bulk_create_issues(
     on_duplicate: str = "skip",
     pacing_seconds: float = DEFAULT_BULK_CREATE_PACING_S,
     stop_on_error: bool = False,
+    concurrency: int = 1,
     difficulty_field_id: int | None = None,
 ) -> dict[str, Any]:
     """Bulk-create issues from per-spec dicts with subject idempotency.
@@ -251,9 +373,15 @@ async def bulk_create_issues(
             ``"create_anyway"`` — skip the pre-check entirely (caller
             has already deduped or wants intentional duplicates).
         pacing_seconds: sleep between POSTs to avoid tripping Redmine's
-            per-issue rate cap. Default 50ms.
+            per-issue rate cap. Default 50ms. Only used when
+            ``concurrency == 1``.
         stop_on_error: True to bail at first failure; remainder lands in
-            ``skipped_for_stop_on_error``.
+            ``skipped_for_stop_on_error`` (sequential) or ``skipped``
+            (concurrent).
+        concurrency: parallel in-flight creates (default 1 = sequential,
+            which keeps the pacing behaviour). Values > 1 run a bounded
+            fan-out and cannot also pace — leave ``pacing_seconds`` at its
+            default (or 0) or the call is rejected.
 
     Returns ``{"results": [...], "summary": {...}}``. Each result has:
         - ``subject``: the requested subject (always present)
@@ -261,6 +389,10 @@ async def bulk_create_issues(
         - ``id``: int (when created or duplicate-of)
         - ``duplicate_of``: int (when skipped due to existing subject)
         - ``error`` / ``hint``: when failed
+
+    With ``concurrency > 1``, a 5xx from any item aborts the batch: results
+    already produced are kept and the rest are reported as ``skipped`` with
+    ``reason="aborted"``.
     """
     if on_duplicate not in {"skip", "fail", "create_anyway"}:
         return _validation_error(
@@ -281,6 +413,8 @@ async def bulk_create_issues(
         }
     if pacing_seconds < 0:
         return _validation_error("pacing_seconds must be non-negative.", field="pacing_seconds")
+    if (err := _check_concurrency(concurrency, pacing_seconds)) is not None:
+        return err
 
     # Pre-validate every spec has the required keys before any I/O — fail
     # fast rather than POST half the batch then bail.
@@ -297,14 +431,8 @@ async def bulk_create_issues(
                     field=f"issues[{idx}].{required}",
                 )
 
-    results: list[dict[str, Any]] = []
-    skipped_for_stop_on_error: list[dict[str, Any]] = []
-    summary = {"created": 0, "skipped": 0, "failed": 0}
-
-    for idx, spec in enumerate(issues):
-        if idx > 0 and pacing_seconds > 0:
-            await asyncio.sleep(pacing_seconds)
-
+    async def process(spec: dict[str, Any]) -> dict[str, Any]:
+        """Create (or skip) one spec, returning its per-item result dict."""
         subject = spec["subject"]
         project = spec["project"]
 
@@ -313,55 +441,35 @@ async def bulk_create_issues(
             try:
                 existing_id = await _find_existing_by_subject(client, project, subject)
             except RedmineAPIError as e:
-                results.append(
-                    {
-                        "subject": subject,
-                        "status": "failed",
-                        "error": e.as_structured().get("error", "redmine_api_error"),
-                        "hint": (
-                            "Duplicate pre-check failed; refusing to create "
-                            "rather than risk a duplicate."
-                        ),
-                    }
-                )
-                summary["failed"] += 1
-                if stop_on_error:
-                    skipped_for_stop_on_error = [
-                        {"subject": s["subject"]} for s in issues[idx + 1 :]
-                    ]
-                    break
-                continue
+                structured = e.as_structured()
+                return {
+                    "subject": subject,
+                    "status": "failed",
+                    "error": structured.get("error", "redmine_api_error"),
+                    "hint": (
+                        "Duplicate pre-check failed; refusing to create "
+                        "rather than risk a duplicate."
+                    ),
+                    "status_code": structured.get("status_code"),
+                }
             if existing_id is not None:
                 if on_duplicate == "skip":
-                    results.append(
-                        {
-                            "subject": subject,
-                            "status": "skipped",
-                            "duplicate_of": existing_id,
-                        }
-                    )
-                    summary["skipped"] += 1
-                    continue
-                # on_duplicate == "fail"
-                results.append(
-                    {
+                    return {
                         "subject": subject,
-                        "status": "failed",
-                        "error": "duplicate_subject",
-                        "hint": (
-                            f"Issue with subject {subject!r} already exists in "
-                            f"project {project!r} as #{existing_id}."
-                        ),
+                        "status": "skipped",
                         "duplicate_of": existing_id,
                     }
-                )
-                summary["failed"] += 1
-                if stop_on_error:
-                    skipped_for_stop_on_error = [
-                        {"subject": s["subject"]} for s in issues[idx + 1 :]
-                    ]
-                    break
-                continue
+                # on_duplicate == "fail"
+                return {
+                    "subject": subject,
+                    "status": "failed",
+                    "error": "duplicate_subject",
+                    "hint": (
+                        f"Issue with subject {subject!r} already exists in "
+                        f"project {project!r} as #{existing_id}."
+                    ),
+                    "duplicate_of": existing_id,
+                }
 
         # Build create_issue kwargs from the spec (only forward keys present).
         create_kwargs: dict[str, Any] = {
@@ -387,32 +495,65 @@ async def bulk_create_issues(
             client, cache, **create_kwargs, difficulty_field_id=difficulty_field_id
         )
         if isinstance(result, dict) and "error" in result:
-            results.append(
-                {
-                    "subject": subject,
-                    "status": "failed",
-                    "error": result.get("error"),
-                    "hint": result.get("hint"),
-                }
-            )
-            summary["failed"] += 1
-            if stop_on_error:
-                skipped_for_stop_on_error = [{"subject": s["subject"]} for s in issues[idx + 1 :]]
-                break
-            continue
+            return {
+                "subject": subject,
+                "status": "failed",
+                "error": result.get("error"),
+                "hint": result.get("hint"),
+                "status_code": result.get("status_code"),
+            }
 
         new_issue = (result or {}).get("issue") or {}
-        results.append(
-            {
-                "subject": subject,
-                "status": "created",
-                "id": _try_int(new_issue.get("id")),
-            }
+        return {
+            "subject": subject,
+            "status": "created",
+            "id": _try_int(new_issue.get("id")),
+        }
+
+    summary = {"created": 0, "skipped": 0, "failed": 0}
+
+    if concurrency > 1:
+        parallel = await _run_concurrent(
+            len(issues),
+            lambda i: process(issues[i]),
+            concurrency=concurrency,
+            should_abort=lambda r: (
+                _is_server_error(r) or (stop_on_error and r["status"] == "failed")
+            ),
         )
-        summary["created"] += 1
+        results: list[dict[str, Any]] = []
+        for spec, result in zip(issues, parallel, strict=False):
+            if result is None:
+                results.append(
+                    {"subject": spec["subject"], "status": "skipped", "reason": "aborted"}
+                )
+                summary["skipped"] += 1
+            else:
+                results.append(result)
+                summary[result["status"]] += 1
+        out: dict[str, Any] = {
+            "results": results,
+            "summary": {"total": len(issues), **summary},
+            "concurrency": concurrency,
+        }
+        return out
+
+    results = []
+    skipped_for_stop_on_error: list[dict[str, Any]] = []
+
+    for idx, spec in enumerate(issues):
+        if idx > 0 and pacing_seconds > 0:
+            await asyncio.sleep(pacing_seconds)
+
+        result = await process(spec)
+        results.append(result)
+        summary[result["status"]] += 1
+        if result["status"] == "failed" and stop_on_error:
+            skipped_for_stop_on_error = [{"subject": s["subject"]} for s in issues[idx + 1 :]]
+            break
 
     summary_with_total = {"total": len(issues), **summary}
-    out: dict[str, Any] = {"results": results, "summary": summary_with_total}
+    out = {"results": results, "summary": summary_with_total}
     if skipped_for_stop_on_error:
         out["skipped_for_stop_on_error"] = skipped_for_stop_on_error
     return out

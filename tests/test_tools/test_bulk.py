@@ -8,6 +8,7 @@ stop-on-error semantics) are exercised in isolation.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -642,3 +643,161 @@ async def test_bulk_create_precheck_404_is_treated_as_no_duplicate(
     )
     assert result["summary"]["created"] == 1
     assert len(created) == 1
+
+
+# ---------------------------------------------------------------------
+# bounded concurrency (#44344)
+# ---------------------------------------------------------------------
+
+
+async def test_bulk_update_invalid_concurrency_rejected(cache: SchemaCache) -> None:
+    result = await bulk.bulk_update_issues(
+        _Sentinel(), cache, issue_ids=[1], notes="x", concurrency=0
+    )
+    assert result["error"] == "invalid_concurrency"
+    result = await bulk.bulk_update_issues(
+        _Sentinel(), cache, issue_ids=[1], notes="x", concurrency=bulk.MAX_CONCURRENCY + 1
+    )
+    assert result["error"] == "invalid_concurrency"
+
+
+async def test_bulk_update_concurrency_caps_in_flight(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    in_flight = 0
+    peak = 0
+
+    async def fake_update(client, cache, issue_id, **kwargs):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.005)
+        in_flight -= 1
+        return {"issue": {"id": issue_id}}
+
+    monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
+    result = await bulk.bulk_update_issues(
+        _Sentinel(), cache, issue_ids=list(range(9)), notes="x", concurrency=3
+    )
+    assert result["succeeded"] == list(range(9))
+    assert result["failed"] == []
+    assert result["concurrency"] == 3
+    assert peak <= 3
+
+
+async def test_bulk_update_concurrency_aborts_on_5xx(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_update(client, cache, issue_id, **kwargs):
+        if issue_id == 1:
+            return {"error": "redmine_api_500", "status_code": 500}
+        await asyncio.sleep(0.05)
+        return {"issue": {"id": issue_id}}
+
+    monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
+    result = await bulk.bulk_update_issues(
+        _Sentinel(), cache, issue_ids=[1, 2, 3, 4], notes="x", concurrency=2
+    )
+    assert result["failed"] == [{"issue_id": 1, "error": "redmine_api_500", "status_code": 500}]
+    assert result["succeeded"] == []
+    # The first item's 5xx aborted the batch before the rest were attempted.
+    assert result["skipped"] == [2, 3, 4]
+
+
+async def test_bulk_update_concurrency_keeps_client_errors_best_effort(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_update(client, cache, issue_id, **kwargs):
+        if issue_id == 2:
+            return {"error": "redmine_api_422", "status_code": 422}
+        return {"issue": {"id": issue_id}}
+
+    monkeypatch.setattr(bulk.issues_module, "update_issue", fake_update)
+    result = await bulk.bulk_update_issues(
+        _Sentinel(), cache, issue_ids=[1, 2, 3], notes="x", concurrency=3
+    )
+    # A 4xx is not fatal under concurrency: only the failing item fails.
+    assert sorted(result["succeeded"]) == [1, 3]
+    assert result["failed"] == [{"issue_id": 2, "error": "redmine_api_422", "status_code": 422}]
+    assert result["skipped"] == []
+
+
+async def test_bulk_create_concurrency_conflicts_with_pacing(cache: SchemaCache) -> None:
+    specs = [{"project": "p", "tracker": "t", "subject": "s"}]
+    result = await bulk.bulk_create_issues(
+        _CreateFakeClient(), cache, issues=specs, concurrency=5, pacing_seconds=0.2
+    )
+    assert result["error"] == "concurrency_pacing_conflict"
+
+
+async def test_bulk_create_concurrency_allows_default_or_zero_pacing(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_create(client, cache, **kwargs):
+        return {"issue": {"id": 1}}
+
+    monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
+    specs = [{"project": "p", "tracker": "t", "subject": f"s{i}"} for i in range(3)]
+    for pacing in (0, bulk.DEFAULT_BULK_CREATE_PACING_S):
+        result = await bulk.bulk_create_issues(
+            _CreateFakeClient(),
+            cache,
+            issues=specs,
+            on_duplicate="create_anyway",
+            concurrency=3,
+            pacing_seconds=pacing,
+        )
+        assert result["summary"] == {"total": 3, "created": 3, "skipped": 0, "failed": 0}
+        assert [r["id"] for r in result["results"]] == [1, 1, 1]
+
+
+async def test_bulk_create_concurrency_aborts_on_5xx(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_create(client, cache, **kwargs):
+        if kwargs["subject"] == "s0":
+            return {"error": "redmine_api_503", "status_code": 503}
+        await asyncio.sleep(0.05)
+        return {"issue": {"id": 1}}
+
+    monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
+    specs = [{"project": "p", "tracker": "t", "subject": f"s{i}"} for i in range(4)]
+    result = await bulk.bulk_create_issues(
+        _CreateFakeClient(),
+        cache,
+        issues=specs,
+        on_duplicate="create_anyway",
+        concurrency=2,
+    )
+    assert result["concurrency"] == 2
+    assert result["summary"] == {"total": 4, "created": 0, "skipped": 3, "failed": 1}
+    assert result["results"][0]["status"] == "failed"
+    assert result["results"][0]["status_code"] == 503
+    assert all(r["status"] == "skipped" and r["reason"] == "aborted" for r in result["results"][1:])
+
+
+async def test_bulk_create_concurrency_preserves_input_order(
+    cache: SchemaCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_create(client, cache, **kwargs):
+        # Delay the first item so completion order differs from input order.
+        if kwargs["subject"] == "s0":
+            await asyncio.sleep(0.02)
+        return {"issue": {"id": 1}}
+
+    monkeypatch.setattr(bulk.issues_module, "create_issue", fake_create)
+    specs = [{"project": "p", "tracker": "t", "subject": f"s{i}"} for i in range(3)]
+    result = await bulk.bulk_create_issues(
+        _CreateFakeClient(),
+        cache,
+        issues=specs,
+        on_duplicate="create_anyway",
+        concurrency=3,
+    )
+    assert [r["subject"] for r in result["results"]] == ["s0", "s1", "s2"]
