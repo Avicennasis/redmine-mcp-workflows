@@ -13,24 +13,59 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterable
+from typing import Any
 
 REDACTED = "***REDACTED***"
 
 # Header-shaped patterns: keep the header name, replace the secret.
 _HEADER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(X-Redmine-API-Key\s*:\s*)(\S+)", re.IGNORECASE),
-    re.compile(r"(Authorization\s*:\s*Bearer\s+)(\S+)", re.IGNORECASE),
+    re.compile(r"(Authorization\s*:\s*(?:Bearer|Basic|Token)\s+)(\S+)", re.IGNORECASE),
+)
+
+# Credential-bearing query/body parameters: keep the parameter name, replace
+# the value. Deliberately narrow — only key-shaped names whose value is the
+# credential — so ordinary URLs, hosts and paths survive intact.
+_QUERY_PARAM_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"((?:[?&]|\b)(?:key|api[_-]?key|access[_-]?token|refresh[_-]?token"
+        r"|client[_-]?secret|auth[_-]?token|token|password|passwd|secret)=)"
+        r"([^&\s\"'<>]+)",
+        re.IGNORECASE,
+    ),
 )
 
 
 def redact(text: str, secrets: Iterable[str] = ()) -> str:
-    """Return ``text`` with auth headers and known secret values masked."""
-    for pattern in _HEADER_PATTERNS:
+    """Return ``text`` with auth headers, credential params and known secrets masked.
+
+    Only credential *values* are replaced; URLs, hostnames and paths are left
+    alone so error diagnostics (e.g. which proxy or endpoint failed) survive.
+    """
+    for pattern in (*_HEADER_PATTERNS, *_QUERY_PARAM_PATTERNS):
         text = pattern.sub(lambda m: m.group(1) + REDACTED, text)
     for secret in secrets:
         if secret:
             text = text.replace(secret, REDACTED)
     return text
+
+
+def redact_value(value: Any, secrets: Iterable[str] = ()) -> Any:
+    """Recursively redact every string inside a JSON-shaped value.
+
+    Leaves non-string scalars untouched, so an error ``body`` keeps its
+    structure (status codes, field names, URLs) while credential strings are
+    scrubbed.
+    """
+    if isinstance(value, str):
+        return redact(value, secrets)
+    if isinstance(value, dict):
+        return {key: redact_value(item, secrets) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_value(item, secrets) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_value(item, secrets) for item in value)
+    return value
 
 
 class RedactingFilter(logging.Filter):
