@@ -37,6 +37,7 @@ from mcp.server.fastmcp import FastMCP, Image
 from .cache.schema_db import SchemaCache
 from .client import RedmineClient
 from .config import Config
+from .content_boundary import wrap_user_content_fields
 from .errors import ReadOnlyModeError, RedmineAPIError
 from .logging_utils import install_redaction
 from .metrics import METRICS
@@ -315,7 +316,9 @@ async def _wrap(coro_factory, *, write: bool = False):
                     # Never turn a committed remote mutation into an apparent
                     # failure: callers could retry and create duplicates.
                     log.exception("project cache invalidation failed after successful write")
-            return _dump(result)
+            # Mark user-authored content as data, not instructions, before it
+            # reaches the caller's context window.
+            return _dump(wrap_user_content_fields(result))
         except RedmineAPIError as e:
             failed = True
             return _dump(e.as_structured())
