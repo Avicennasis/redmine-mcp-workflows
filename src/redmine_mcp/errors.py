@@ -48,14 +48,54 @@ class RedmineAPIError(Exception):
     def as_structured(self) -> dict[str, Any]:
         err = StructuredError(
             error=f"redmine_api_{self.status_code}",
-            hint=self.hint or _hint_for_status(self.status_code),
+            hint=self.hint or _hint_for_status(self.status_code, self.body),
             extra={"status_code": self.status_code, "body": self.body},
         )
         return err.as_dict()
 
 
-def _hint_for_status(code: int) -> str:
+# Hosts/paths that mean "an identity provider answered this request". Only
+# consulted for an HTML 401, so a broad token like "/auth" is safe here.
+_AUTH_PROXY_MARKERS = (
+    "auth.gateway",
+    "authelia",
+    "/auth",
+    "sso.",
+    "oauth",
+    "keycloak",
+    "login.microsoftonline",
+)
+
+
+def _looks_like_proxy_denial(body: Any) -> bool:
+    """True when a 401 body is an HTML redirect to an identity provider.
+
+    Redmine's own 401 is JSON (``{"error": ...}``) or a short text reason. An
+    HTML ``<a href>`` pointing at an auth host means a reverse proxy answered
+    and the API key was never examined — the case where "check your API key"
+    sends you after a credential that is working fine.
+    """
+    if not isinstance(body, str):
+        return False
+    lowered = body.lower()
+    if "<a href=" not in lowered or "unauthorized" not in lowered:
+        return False
+    return any(marker in lowered for marker in _AUTH_PROXY_MARKERS)
+
+
+def _hint_for_status(code: int, body: Any = None) -> str:
     if code == 401:
+        if _looks_like_proxy_denial(body):
+            return (
+                "A reverse proxy (e.g. Authelia) in front of Redmine refused this "
+                "path — the API key itself is probably fine. Redmine's global-"
+                "enumeration endpoints (/issue_statuses.json, /roles.json, "
+                "/users/current.json) are commonly blocked for API clients even when "
+                "/issues/* works, which breaks any operation that needs them — notably "
+                "close_issue, which resolves the closed status from /issue_statuses. "
+                "Check the proxy's access rules for Redmine's API paths, or point "
+                "REDMINE_URL at a loopback that bypasses the proxy."
+            )
         return "Authentication failed. Check REDMINE_API_KEY."
     if code == 403:
         return "Access denied. The current user lacks permission for this operation."
