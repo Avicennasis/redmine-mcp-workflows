@@ -175,6 +175,49 @@ class CustomFieldShapeError(StructuredError):
 
 
 @dataclass
+class CustomFieldValueInvalid(StructuredError):
+    """A custom-field value is not one of the field's cached enum values.
+
+    Raised only when the field's ``possible_values`` are known (a ``list``
+    custom field that has been cached). Values are matched case-insensitively
+    and auto-corrected to the canonical casing before this fires, so a hit
+    here means the value matches no possible value even ignoring case (or
+    matches more than one ambiguously).
+    """
+
+    error: str = "custom_field_value_invalid"
+
+    def __init__(
+        self,
+        *,
+        field_id: int,
+        field_name: str | None = None,
+        value: Any,
+        possible_values: list[str],
+        reason: str = "no_match",
+    ) -> None:
+        super().__init__(error="custom_field_value_invalid")
+        label = f" {field_name!r}" if field_name else f" id {field_id}"
+        if reason == "ambiguous":
+            self.hint = (
+                f"Value {value!r} matches multiple values of custom field"
+                f"{label} ignoring case; pass the exact casing."
+            )
+        else:
+            self.hint = (
+                f"Value {value!r} is not valid for custom field{label}. "
+                "Case-insensitive matching found no candidate. "
+                "Use redmine_list_custom_fields to see the accepted values."
+            )
+        self.extra = {
+            "field_id": field_id,
+            "value": value,
+            "possible_values": possible_values,
+            "reason": reason,
+        }
+
+
+@dataclass
 class RoleNotAuthorized(StructuredError):
     """The current user lacks an expected role for this operation."""
 
@@ -292,6 +335,7 @@ __all__ = [
     "RequiredFieldMissing",
     "CustomFieldUnknown",
     "CustomFieldShapeError",
+    "CustomFieldValueInvalid",
     "RoleNotAuthorized",
     "AttachmentPathDenied",
     "TimeEntryHoursInvalid",

@@ -18,6 +18,7 @@ from typing import Any
 from ..errors import (
     CustomFieldShapeError,
     CustomFieldUnknown,
+    CustomFieldValueInvalid,
     IssueHeld,
     RequiredFieldMissing,
     StructuredError,
@@ -139,6 +140,110 @@ def validate_custom_fields(
                     )
                 )
     return errors
+
+
+def _custom_field_id(
+    entry: dict[str, Any],
+    name_to_id: dict[str, int],
+) -> int | None:
+    """Resolve an entry's field id from its ``id`` or ``name`` key."""
+    try:
+        return int(entry["id"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    name = entry.get("name")
+    if isinstance(name, str):
+        return name_to_id.get(name)
+    return None
+
+
+def correct_custom_field_values(
+    custom_fields: list[dict[str, Any]] | None,
+    *,
+    enum_values_by_id: dict[int, list[str]] | None = None,
+    name_to_id: dict[str, int] | None = None,
+    field_names_by_id: dict[int, str] | None = None,
+) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]], list[StructuredError]]:
+    """Case-correct enum custom-field values to Redmine's canonical casing.
+
+    LLMs routinely emit the right value in the wrong case (``"high"`` for
+    ``"High"``). Redmine rejects that outright, so we fuzzy-match against
+    the field's cached ``possible_values`` and rewrite to the canonical
+    casing before the request goes out.
+
+    Returns ``(corrected, corrections, errors)``:
+
+      * ``corrected`` — the list to send to Redmine. Only entries whose
+        value was rewritten differ from the input; every other entry is
+        returned untouched.
+      * ``corrections`` — one record per rewrite:
+        ``{"field_id", "field_name", "from", "to", "message"}``.
+      * ``errors`` — one :class:`CustomFieldValueInvalid` per value that
+        matched no possible value (or matched ambiguously).
+
+    Only scalar non-empty strings are checked, and only for fields whose
+    ``possible_values`` are known to the cache. Text/date/numeric fields
+    (empty ``possible_values``) and empty strings (clearing a field) pass
+    through untouched — an empty cache must never turn a write into a
+    rejection.
+    """
+    if not custom_fields:
+        return custom_fields, [], []
+    enum_values_by_id = enum_values_by_id or {}
+    name_to_id = name_to_id or {}
+    field_names_by_id = field_names_by_id or {}
+
+    corrected: list[dict[str, Any]] = []
+    corrections: list[dict[str, Any]] = []
+    errors: list[StructuredError] = []
+
+    for entry in custom_fields:
+        if not isinstance(entry, dict):
+            corrected.append(entry)
+            continue
+
+        field_id = _custom_field_id(entry, name_to_id)
+        possible = enum_values_by_id.get(field_id) if field_id is not None else None
+        value = entry.get("value")
+
+        if not possible or not isinstance(value, str) or not value.strip():
+            corrected.append(entry)
+            continue
+        if value in possible:
+            corrected.append(entry)
+            continue
+
+        matches = [v for v in possible if v.casefold() == value.casefold()]
+        field_name = (
+            entry.get("name")
+            or (field_names_by_id.get(field_id) if field_id is not None else None)
+            or None
+        )
+        if len(matches) == 1:
+            canonical = matches[0]
+            corrected.append({**entry, "value": canonical})
+            corrections.append(
+                {
+                    "field_id": field_id,
+                    "field_name": field_name,
+                    "from": value,
+                    "to": canonical,
+                    "message": f"corrected {value!r} -> {canonical!r}",
+                }
+            )
+        else:
+            corrected.append(entry)
+            errors.append(
+                CustomFieldValueInvalid(
+                    field_id=field_id if field_id is not None else 0,
+                    field_name=field_name,
+                    value=value,
+                    possible_values=possible,
+                    reason="ambiguous" if len(matches) > 1 else "no_match",
+                )
+            )
+
+    return corrected, corrections, errors
 
 
 HELD_FIELD_NAME = "Held"
