@@ -47,6 +47,7 @@ from .tools import (
     attachments,
     bulk,
     comments,
+    copy_issue,
     custom_fields,
     discovery,
     endpoints,
@@ -745,6 +746,88 @@ async def redmine_create_issue(
             difficulty_field_id=cfg.difficulty_field_id,
             held_field_id=cfg.held_field_id,
             held_until_field_id=cfg.held_until_field_id,
+        )
+
+    return await _wrap(factory, write=True)
+
+
+@mcp.tool()
+async def redmine_copy_issue(
+    issue_id: int = 0,
+    project: str = "",
+    tracker: str = "",
+    subject: str = "",
+    priority: str = "",
+    description: str = "",
+    assigned_to_id: int = 0,
+    due_date: str = "",
+    start_date: str = "",
+    done_ratio: int = -1,
+    custom_fields: list | str = "",
+    copy_subtasks: bool = False,
+    copy_watchers: bool = False,
+    copy_relations: bool = False,
+) -> str:
+    """Duplicate an issue, with optional field overrides and link copies.
+
+    Redmine has no REST copy endpoint, so the copy is reconstructed from a
+    read of the source issue and a normal create; the requested links
+    (subtasks / watchers / relations) are replayed afterwards.
+
+    Args:
+        issue_id: source issue id (required).
+        project / tracker: copy into a different project/tracker. Empty =
+            inherit from the source.
+        subject: override the copied subject. Empty = ``"Copy of <source>"``.
+        priority / description / assigned_to_id / due_date / start_date /
+            done_ratio / custom_fields: per-field overrides; omitted fields
+            are inherited from the source.
+        copy_subtasks: recursively copy subtasks (depth-capped).
+        copy_watchers: re-add the source's watchers to the copy.
+        copy_relations: recreate the source's issue relations on the copy.
+
+    Returns ``{"issue", "copied": {watchers, relations, subtasks}, "source"}``.
+    Honors ``REDMINE_MCP_READ_ONLY``.
+    """
+    if issue_id <= 0:
+        return _dump(
+            {
+                "error": "validation_failed",
+                "hint": "issue_id must be a positive integer.",
+                "issue_id": issue_id,
+            }
+        )
+    proj: int | str | None = project if project else None
+    trk: int | str | None = tracker if tracker else None
+    subj = subject if subject else None
+    pri: int | str | None = priority if priority else None
+    desc = description if description else None
+    assignee = assigned_to_id if assigned_to_id else None
+    dd = due_date if due_date else None
+    sd = start_date if start_date else None
+    dr = done_ratio if done_ratio != -1 else None
+    cf, cf_err = _normalize_custom_fields(custom_fields)
+    if cf_err is not None:
+        return _dump(cf_err)
+
+    async def factory(client, cache):
+        return await copy_issue.copy_issue(
+            client,
+            cache,
+            issue_id,
+            project=proj,
+            tracker=trk,
+            subject=subj,
+            priority=pri,
+            description=desc,
+            assigned_to_id=assignee,
+            due_date=dd,
+            start_date=sd,
+            done_ratio=dr,
+            custom_fields=cf,
+            copy_subtasks=copy_subtasks,
+            copy_watchers=copy_watchers,
+            copy_relations=copy_relations,
         )
 
     return await _wrap(factory, write=True)
