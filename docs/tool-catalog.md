@@ -100,7 +100,7 @@ Every write validates against the schema cache — status transitions, custom fi
 | `redmine_update_wiki_page` | Update an existing wiki page. Optional `version` parameter for optimistic concurrency. |
 | `redmine_delete_wiki_page` | Permanently delete a wiki page and all its historical versions. |
 
-## Projects (7)
+## Projects (8)
 
 | Tool | Description |
 |------|-------------|
@@ -111,6 +111,7 @@ Every write validates against the schema cache — status transitions, custom fi
 | `redmine_archive_project` | Archive a project (Redmine 5.0+). Reversible via unarchive. |
 | `redmine_unarchive_project` | Unarchive a previously archived project. |
 | `redmine_describe_project` | Return a project description (trackers, modules, members). |
+| `redmine_activity_feed` | Merged project activity feed (issues, news, wiki, forums, time entries, files) over an optional date range, filterable by activity type. |
 
 ## Groups (7)
 

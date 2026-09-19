@@ -58,6 +58,7 @@ TOOL_CATEGORIES: dict[str, str] = {
     "redmine_delete_issue_category": "projects",
     "redmine_list_project_files": "projects",
     "redmine_upload_project_file": "projects",
+    "redmine_activity_feed": "projects",
     # time tracking
     "redmine_create_time_entry": "time",
     "redmine_list_time_entries": "time",

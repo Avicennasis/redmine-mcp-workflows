@@ -42,6 +42,7 @@ from .logging_utils import install_redaction
 from .metrics import METRICS
 from .tool_filter import filter_tool_names
 from .tools import (
+    activity,
     attachments,
     bulk,
     comments,
@@ -1405,6 +1406,59 @@ async def redmine_time_report(
             user_id=user_id or None,
             group_by=group_by,
             max_entries=max_entries,
+        )
+
+    return await _wrap(factory)
+
+
+@mcp.tool()
+async def redmine_activity_feed(
+    project: str,
+    from_date: str = "",
+    to_date: str = "",
+    activity_types: list | str = "",
+    limit: int = 100,
+    max_per_source: int = 100,
+) -> str:
+    """Recent project activity across issues, news, wiki, forums, time and files.
+
+    Redmine's ``/projects/:id/activity`` endpoint is not API-usable (no JSON;
+    the Atom feed requires a web session), so this tool synthesizes the feed
+    from the per-resource REST endpoints and merges the events by timestamp.
+
+    Args:
+        project: numeric id or identifier slug.
+        from_date / to_date: optional ``YYYY-MM-DD`` bounds (both inclusive).
+        activity_types: optional subset of ``issues``, ``news``, ``wiki``,
+            ``forums``, ``time_entries``, ``files``. Empty = all. Accepts a
+            list or a comma-separated string.
+        limit: cap on merged events returned (1-500).
+        max_per_source: cap on rows fetched from each source before merging.
+
+    Returns ``{project, project_id, from, to, activity_types, count,
+    truncated, events, sources}``. Each event is
+    ``{type, timestamp, title, author?, description?, url?, ...}``.
+    ``sources`` records the per-source row count, or an ``error`` when that
+    source was unavailable — one failed source never fails the feed.
+    """
+    types: list[str] | None
+    if isinstance(activity_types, str):
+        types = [t.strip() for t in activity_types.split(",") if t.strip()] or None
+    elif activity_types:
+        types = [str(t) for t in activity_types]
+    else:
+        types = None
+
+    async def factory(client, cache):
+        return await activity.activity_feed(
+            client,
+            cache,
+            project=project,
+            from_date=from_date or None,
+            to_date=to_date or None,
+            activity_types=types,
+            limit=limit,
+            max_per_source=max_per_source,
         )
 
     return await _wrap(factory)
