@@ -79,6 +79,10 @@ class RedmineClient:
 
     def __init__(self, config: Config, *, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> None:
         self._config = config
+        # Credential values, handed to raised RedmineAPIError instances so the
+        # error boundary can scrub them even when they appear bare (no header
+        # or query-param syntax around them).
+        self._secrets = tuple(s for s in (config.api_key, config.oauth_token) if s)
         if not host_allowed(config.redmine_url, config.allowed_hosts):
             raise RedmineAPIError(
                 status_code=0,
@@ -88,6 +92,7 @@ class RedmineClient:
                     f"REDMINE_MCP_ALLOWED_HOSTS ({', '.join(config.allowed_hosts)}). "
                     "Add the host or unset the allow-list."
                 ),
+                secrets=self._secrets,
             )
         headers = httpx.Headers(
             {
@@ -158,6 +163,7 @@ class RedmineClient:
                     status_code=0,
                     body=str(e),
                     hint="Network error reaching Redmine.",
+                    secrets=self._secrets,
                 ) from e
 
             if resp.status_code in RETRYABLE_STATUS and attempt < MAX_RETRIES and idempotent:
@@ -170,7 +176,9 @@ class RedmineClient:
                     body: Any = resp.json()
                 except ValueError:
                     body = resp.text
-                raise RedmineAPIError(status_code=resp.status_code, body=body)
+                raise RedmineAPIError(
+                    status_code=resp.status_code, body=body, secrets=self._secrets
+                )
 
             if binary:
                 return resp.content
@@ -184,10 +192,15 @@ class RedmineClient:
                     status_code=resp.status_code,
                     body=resp.text,
                     hint="Redmine returned a non-JSON success body.",
+                    secrets=self._secrets,
                 ) from e
 
         # Unreachable; appeases type checker.
-        raise RedmineAPIError(status_code=0, body=str(last_exc) if last_exc else "unknown")
+        raise RedmineAPIError(
+            status_code=0,
+            body=str(last_exc) if last_exc else "unknown",
+            secrets=self._secrets,
+        )
 
     async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         return await self._request("GET", path, params=params)
@@ -243,6 +256,7 @@ class RedmineClient:
                     f"({_origin(base)!r}); refusing to send credentials to "
                     f"{_origin(resolved)!r}."
                 ),
+                secrets=self._secrets,
             )
         return await self._request("GET", path, binary=True)
 
