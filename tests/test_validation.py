@@ -10,6 +10,7 @@ from redmine_mcp.cache.schema_db import SchemaCache
 from redmine_mcp.errors import (
     CustomFieldShapeError,
     CustomFieldUnknown,
+    CustomFieldValueInvalid,
     IssueHeld,
     RequiredFieldMissing,
     RoleNotAuthorized,
@@ -273,6 +274,102 @@ def test_validate_custom_fields_skips_id_check_when_known_set_absent() -> None:
     # Without a known_field_ids list we trust the API; only shape errors fire.
     errs = field_validators.validate_custom_fields({"custom_fields": [{"id": 99, "value": "x"}]})
     assert errs == []
+
+
+# ---------------------------------------------------------------------
+# custom-field enum case correction
+# ---------------------------------------------------------------------
+
+_ENUMS = {1: ["Unclassified", "Easy", "Normal", "Hard"]}
+
+
+def test_correct_custom_field_values_exact_match_unchanged() -> None:
+    entries = [{"id": 1, "value": "Easy"}]
+    corrected, corrections, errors = field_validators.correct_custom_field_values(
+        entries, enum_values_by_id=_ENUMS
+    )
+    assert corrected == entries
+    assert corrections == []
+    assert errors == []
+
+
+def test_correct_custom_field_values_case_insensitive_rewrite() -> None:
+    corrected, corrections, errors = field_validators.correct_custom_field_values(
+        [{"id": 1, "value": "hARd"}],
+        enum_values_by_id=_ENUMS,
+        field_names_by_id={1: "Difficulty"},
+    )
+    assert corrected == [{"id": 1, "value": "Hard"}]
+    assert errors == []
+    assert corrections == [
+        {
+            "field_id": 1,
+            "field_name": "Difficulty",
+            "from": "hARd",
+            "to": "Hard",
+            "message": "corrected 'hARd' -> 'Hard'",
+        }
+    ]
+
+
+def test_correct_custom_field_values_name_keyed_entry() -> None:
+    corrected, corrections, errors = field_validators.correct_custom_field_values(
+        [{"name": "Difficulty", "value": "normal"}],
+        enum_values_by_id=_ENUMS,
+        name_to_id={"Difficulty": 1},
+        field_names_by_id={1: "Difficulty"},
+    )
+    assert corrected == [{"name": "Difficulty", "value": "Normal"}]
+    assert len(corrections) == 1
+    assert errors == []
+
+
+def test_correct_custom_field_values_rejects_no_match() -> None:
+    corrected, corrections, errors = field_validators.correct_custom_field_values(
+        [{"id": 1, "value": "Impossible"}], enum_values_by_id=_ENUMS
+    )
+    assert corrected == [{"id": 1, "value": "Impossible"}]
+    assert corrections == []
+    assert len(errors) == 1
+    assert isinstance(errors[0], CustomFieldValueInvalid)
+    assert errors[0].as_dict()["reason"] == "no_match"
+
+
+def test_correct_custom_field_values_rejects_ambiguous() -> None:
+    _corrected, _corrections, errors = field_validators.correct_custom_field_values(
+        [{"id": 2, "value": "prod"}],
+        enum_values_by_id={2: ["Prod", "PROD"]},
+    )
+    assert len(errors) == 1
+    assert errors[0].as_dict()["reason"] == "ambiguous"
+
+
+def test_correct_custom_field_values_skips_unknown_field() -> None:
+    """No cached possible_values → pass through, never reject."""
+    entries = [{"id": 99, "value": "whatever"}]
+    corrected, corrections, errors = field_validators.correct_custom_field_values(
+        entries, enum_values_by_id=_ENUMS
+    )
+    assert corrected == entries
+    assert corrections == []
+    assert errors == []
+
+
+def test_correct_custom_field_values_skips_empty_and_non_string() -> None:
+    entries = [{"id": 1, "value": ""}, {"id": 1, "value": ["Easy", "Hard"]}, {"id": 1, "value": 5}]
+    corrected, corrections, errors = field_validators.correct_custom_field_values(
+        entries, enum_values_by_id=_ENUMS
+    )
+    assert corrected == entries
+    assert corrections == []
+    assert errors == []
+
+
+def test_correct_custom_field_values_none_returns_none() -> None:
+    corrected, corrections, errors = field_validators.correct_custom_field_values(None)
+    assert corrected is None
+    assert corrections == []
+    assert errors == []
 
 
 # ---------------------------------------------------------------------

@@ -258,6 +258,62 @@ async def _apply_difficulty(
     return _merge_custom_field(custom_fields, field_id, DIFFICULTY_DEFAULT_VALUE)
 
 
+def _custom_field_enum_metadata(
+    cache: SchemaCache,
+    custom_fields: list[dict[str, Any]] | None,
+) -> tuple[dict[int, list[str]], dict[str, int], dict[int, str]]:
+    """Collect cached enum metadata for the fields referenced by ``custom_fields``.
+
+    Redmine's ``possible_values`` only exist for ``list`` fields, and only
+    once the field has been cached (``/custom_fields.json`` is admin-only).
+    A missing/uncached field contributes nothing, so correction is skipped
+    rather than turning a write into a rejection.
+    """
+    enum_values_by_id: dict[int, list[str]] = {}
+    name_to_id: dict[str, int] = {}
+    field_names_by_id: dict[int, str] = {}
+    for entry in custom_fields or []:
+        if not isinstance(entry, dict):
+            continue
+        field: dict[str, Any] | None = None
+        fid = _try_int(entry.get("id"))
+        if fid is not None:
+            field = cache.get_custom_field(fid)
+        if field is None:
+            name = entry.get("name")
+            if isinstance(name, str) and name:
+                field = cache.get_custom_field_by_name(name)
+        if field is None:
+            continue
+        resolved_id = _try_int(field.get("id"))
+        if resolved_id is None:
+            continue
+        name = entry.get("name") or field.get("name")
+        if isinstance(name, str) and name:
+            name_to_id[name] = resolved_id
+            field_names_by_id[resolved_id] = name
+        possible = [str(v) for v in (field.get("possible_values") or [])]
+        if possible:
+            enum_values_by_id[resolved_id] = possible
+    return enum_values_by_id, name_to_id, field_names_by_id
+
+
+def _correct_custom_fields(
+    cache: SchemaCache,
+    custom_fields: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]], list[StructuredError]]:
+    """Case-correct enum values against the cached custom-field definitions."""
+    enum_values_by_id, name_to_id, field_names_by_id = _custom_field_enum_metadata(
+        cache, custom_fields
+    )
+    return field_validators.correct_custom_field_values(
+        custom_fields,
+        enum_values_by_id=enum_values_by_id,
+        name_to_id=name_to_id,
+        field_names_by_id=field_names_by_id,
+    )
+
+
 def _validate_held_reason(held: str | bool | None) -> HeldReasonRequired | None:
     """Reject ``held=True`` (and whitespace-only reasons); allow str / False / None.
 
@@ -475,6 +531,10 @@ async def create_issue(
         held_until_field_id=held_until_field_id,
     )
 
+    custom_fields, corrections, cf_errors = _correct_custom_fields(cache, custom_fields)
+    if cf_errors:
+        return _validation_response(cf_errors)
+
     project_id = await project_schema.resolve_project_id(client, cache, project)
     if project_id is None:
         return {
@@ -532,7 +592,10 @@ async def create_issue(
         return e.as_structured()
 
     issue = resp.get("issue") if isinstance(resp, dict) else None
-    return {"issue": issue, "source": "api"}
+    result: dict[str, Any] = {"issue": issue, "source": "api"}
+    if corrections:
+        result["corrections"] = corrections
+    return result
 
 
 async def update_issue(
@@ -631,6 +694,10 @@ async def update_issue(
         held_field_id=held_field_id,
         held_until_field_id=held_until_field_id,
     )
+
+    custom_fields, corrections, cf_errors = _correct_custom_fields(cache, custom_fields)
+    if cf_errors:
+        return _validation_response(cf_errors)
 
     target_status_id: int | None = None
     if status is not None:
@@ -819,6 +886,8 @@ async def update_issue(
             outcome="allowed",
         )
 
+    if corrections and isinstance(final, dict) and "error" not in final:
+        final = {**final, "corrections": corrections}
     return final
 
 

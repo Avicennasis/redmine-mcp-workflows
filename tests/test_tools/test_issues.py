@@ -476,7 +476,10 @@ async def test_create_issue_difficulty_lazy_loads_from_api(cache: SchemaCache) -
                         "field_format": "list",
                         "is_required": True,
                         "default_value": "Unclassified",
-                        "possible_values": [{"value": "Unclassified", "label": "Unclassified"}],
+                        "possible_values": [
+                            {"value": "Unclassified", "label": "Unclassified"},
+                            {"value": "Easy", "label": "Easy"},
+                        ],
                         "trackers": [],
                     },
                 ]
@@ -816,6 +819,182 @@ async def test_update_issue_preserves_explicit_difficulty_via_custom_fields(
     )
     put_payload = next(c for c in client.calls if c[0] == "PUT")[2]["issue"]
     assert put_payload["custom_fields"] == [{"id": 1, "value": "Normal"}]
+
+
+# ---- custom-field enum case correction (#44444) -------------------------
+
+
+async def test_create_issue_difficulty_case_corrected_to_canonical(
+    cache: SchemaCache,
+) -> None:
+    """difficulty='easy' is rewritten to 'Easy' and reported in the response."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_difficulty_field(cache, field_id=1)
+    client = FakeClient({("POST", "/issues.json"): {"issue": {"id": 210, "subject": "x"}}})
+
+    result = await issues.create_issue(
+        client,
+        cache,
+        project="claudecode",
+        tracker="Bug",
+        subject="x",
+        difficulty="easy",
+    )
+    posted = client.calls[-1][2]["issue"]
+    assert posted["custom_fields"] == [{"id": 1, "value": "Easy"}]
+    assert result["corrections"] == [
+        {
+            "field_id": 1,
+            "field_name": "Difficulty",
+            "from": "easy",
+            "to": "Easy",
+            "message": "corrected 'easy' -> 'Easy'",
+        }
+    ]
+
+
+async def test_create_issue_custom_field_value_case_corrected(cache: SchemaCache) -> None:
+    """An explicit id-keyed custom_fields entry is corrected too."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_difficulty_field(cache, field_id=1)
+    client = FakeClient({("POST", "/issues.json"): {"issue": {"id": 211, "subject": "y"}}})
+
+    result = await issues.create_issue(
+        client,
+        cache,
+        project="claudecode",
+        tracker="Bug",
+        subject="y",
+        custom_fields=[{"id": 1, "value": "hARd"}],
+    )
+    posted = client.calls[-1][2]["issue"]
+    assert posted["custom_fields"] == [{"id": 1, "value": "Hard"}]
+    assert result["corrections"][0]["from"] == "hARd"
+    assert result["corrections"][0]["to"] == "Hard"
+
+
+async def test_update_issue_custom_field_case_corrected(cache: SchemaCache) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_difficulty_field(cache, field_id=1)
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): _issue_payload(),
+            ("PUT", "/issues/42.json"): None,
+        }
+    )
+    result = await issues.update_issue(
+        client, cache, 42, custom_fields=[{"id": 1, "value": "normal"}]
+    )
+    put_payload = next(c for c in client.calls if c[0] == "PUT")[2]["issue"]
+    assert put_payload["custom_fields"] == [{"id": 1, "value": "Normal"}]
+    assert result["corrections"][0]["to"] == "Normal"
+
+
+async def test_create_issue_rejects_unmatchable_enum_value(cache: SchemaCache) -> None:
+    """A value matching no possible value (even case-insensitively) is
+    rejected before the POST."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_difficulty_field(cache, field_id=1)
+    client = FakeClient({("POST", "/issues.json"): {"issue": {"id": 212}}})
+
+    result = await issues.create_issue(
+        client,
+        cache,
+        project="claudecode",
+        tracker="Bug",
+        subject="z",
+        custom_fields=[{"id": 1, "value": "Impossible"}],
+    )
+    assert result["error"] == "validation_failed"
+    err = result["errors"][0]
+    assert err["error"] == "custom_field_value_invalid"
+    assert err["field_id"] == 1
+    assert err["value"] == "Impossible"
+    assert "Impossible" not in str(err.get("possible_values"))
+    assert not any(c[0] == "POST" for c in client.calls)
+
+
+async def test_create_issue_rejects_ambiguous_enum_value(cache: SchemaCache) -> None:
+    """When two possible values differ only by case, a ci match is ambiguous."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    cache.put_custom_field(
+        field_id=3,
+        name="Env",
+        format_kind="list",
+        is_required=False,
+        default_value=None,
+        possible_values=["Prod", "PROD"],
+        applicable_tracker_ids=[],
+        for_all_projects=True,
+    )
+    client = FakeClient({("POST", "/issues.json"): {"issue": {"id": 213}}})
+
+    result = await issues.create_issue(
+        client,
+        cache,
+        project="claudecode",
+        tracker="Bug",
+        subject="amb",
+        custom_fields=[{"id": 3, "value": "prod"}],
+    )
+    assert result["error"] == "validation_failed"
+    assert result["errors"][0]["error"] == "custom_field_value_invalid"
+    assert result["errors"][0]["reason"] == "ambiguous"
+    assert not any(c[0] == "POST" for c in client.calls)
+
+
+async def test_create_issue_non_enum_field_value_not_rejected(cache: SchemaCache) -> None:
+    """A field with no cached possible_values (text field) passes through."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    cache.put_custom_field(
+        field_id=4,
+        name="Notes",
+        format_kind="text",
+        is_required=False,
+        default_value=None,
+        possible_values=[],
+        applicable_tracker_ids=[],
+        for_all_projects=True,
+    )
+    client = FakeClient({("POST", "/issues.json"): {"issue": {"id": 214}}})
+
+    result = await issues.create_issue(
+        client,
+        cache,
+        project="claudecode",
+        tracker="Bug",
+        subject="t",
+        custom_fields=[{"id": 4, "value": "anything goes"}],
+    )
+    assert result["issue"]["id"] == 214
+    assert "corrections" not in result
+
+
+async def test_create_issue_clearing_enum_field_not_rejected(cache: SchemaCache) -> None:
+    """An empty value clears the field; it must never be treated as invalid."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_difficulty_field(cache, field_id=1)
+    client = FakeClient({("POST", "/issues.json"): {"issue": {"id": 215}}})
+
+    result = await issues.create_issue(
+        client,
+        cache,
+        project="claudecode",
+        tracker="Bug",
+        subject="clear",
+        custom_fields=[{"id": 1, "value": ""}],
+    )
+    assert result["issue"]["id"] == 215
+    assert "corrections" not in result
+    posted = client.calls[-1][2]["issue"]
+    assert posted["custom_fields"] == [{"id": 1, "value": ""}]
 
 
 async def test_update_issue_records_allowed_outcome_on_status_change(
