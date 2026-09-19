@@ -1838,6 +1838,7 @@ async def redmine_bulk_create_issues(
     on_duplicate: str = "skip",
     pacing_seconds: float = 0.05,
     stop_on_error: bool = False,
+    concurrency: int = 1,
 ) -> str:
     """Bulk-create issues with subject idempotency.
 
@@ -1853,9 +1854,14 @@ async def redmine_bulk_create_issues(
             ``"create_anyway"`` skips the pre-check entirely.
         pacing_seconds: sleep between POSTs (default 50ms — empirically
             the floor for not tripping Redmine's per-issue rate cap on
-            small VMs). Set 0 to disable.
+            small VMs). Set 0 to disable. Only used when ``concurrency=1``.
         stop_on_error: True to bail at first failure; remainder lands in
-            ``skipped_for_stop_on_error``.
+            ``skipped_for_stop_on_error`` (sequential) or ``skipped``
+            (concurrent).
+        concurrency: parallel in-flight creates (default 1 = sequential).
+            Values > 1 use a bounded ``asyncio.Semaphore`` fan-out and are
+            mutually exclusive with pacing — leave ``pacing_seconds`` at its
+            default (or 0). A 5xx from any item aborts the batch.
 
     Returns ``{"results": [{subject, status, id?, duplicate_of?, error?, hint?}],
     "summary": {total, created, skipped, failed}}``.
@@ -1871,6 +1877,7 @@ async def redmine_bulk_create_issues(
             on_duplicate=on_duplicate,
             pacing_seconds=pacing_seconds,
             stop_on_error=stop_on_error,
+            concurrency=concurrency,
             difficulty_field_id=cfg.difficulty_field_id,
         )
 
@@ -1895,6 +1902,7 @@ async def redmine_bulk_update_issues(
     start_date: str = "",
     done_ratio: int = -1,
     stop_on_error: bool = False,
+    concurrency: int = 1,
 ) -> str:
     """Apply the same field updates to many issues in one call.
 
@@ -1923,9 +1931,14 @@ async def redmine_bulk_update_issues(
         stop_on_error: if True, halt at the first failure (remaining
             ids land in ``skipped``); otherwise best-effort across the
             whole batch.
+        concurrency: parallel in-flight PUTs (default 1 = sequential).
+            Values > 1 use a bounded ``asyncio.Semaphore`` fan-out; a 5xx
+            from any item aborts the batch (unstarted ids land in
+            ``skipped``).
 
     Returns ``{total, succeeded, failed, skipped}``. Honors
-    ``REDMINE_MCP_READ_ONLY``. Sequential — Redmine has no batch endpoint.
+    ``REDMINE_MCP_READ_ONLY``. Redmine has no batch endpoint — items are
+    applied ``concurrency`` at a time.
     """
     sub = subject if subject else None
     desc = description if description else None
@@ -1971,6 +1984,7 @@ async def redmine_bulk_update_issues(
             start_date=sd,
             done_ratio=dr,
             stop_on_error=stop_on_error,
+            concurrency=concurrency,
             difficulty_field_id=cfg.difficulty_field_id,
             held_field_id=cfg.held_field_id,
             held_until_field_id=cfg.held_until_field_id,
