@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "redmine-mcp-workflows"
-version = "1.0.0"
+version = "2.0.0"
 description = "Schema-aware Model Context Protocol server for Redmine: validates workflow transitions, custom fields, and required fields against a per-tracker cache before round-tripping the API."
 readme = "README.md"
 license = { text = "MIT" }

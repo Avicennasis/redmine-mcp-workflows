@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-23
+
 ### Fixed
 - **Workflow cache no longer over-blocks multi-role users.** `is_disallowed`
   treated a `disallowed` observation for *any* role as decisive, but Redmine
