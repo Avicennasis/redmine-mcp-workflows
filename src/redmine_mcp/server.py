@@ -32,7 +32,7 @@ import logging
 import sys
 import time
 
-from mcp.server.fastmcp import FastMCP, Image
+from mcp.server.mcpserver import Image, MCPServer
 
 from .cache.schema_db import SchemaCache
 from .client import RedmineClient
@@ -78,7 +78,7 @@ log = logging.getLogger("redmine_mcp")
 
 
 @contextlib.asynccontextmanager
-async def _server_lifespan(_: FastMCP):
+async def _server_lifespan(_: MCPServer):
     """Start the backend probe without delaying stdio protocol startup."""
     task = asyncio.create_task(_startup_healthcheck(_get_config()))
     try:
@@ -90,7 +90,7 @@ async def _server_lifespan(_: FastMCP):
             await task
 
 
-mcp = FastMCP(
+mcp = MCPServer(
     "redmine",
     instructions=(
         "Schema-aware MCP server for Redmine. Validates workflow transitions, "
