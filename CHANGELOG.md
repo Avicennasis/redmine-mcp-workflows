@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`quiet` write mode** (`redmine_create_issue`, `redmine_update_issue`,
+  `redmine_close_issue`, `redmine_add_comment`, `redmine_bulk_create_issues`).
+  Write tools returned the full issue JSON (~3-5KB), the fastest way to exhaust a
+  bulk pipeline's context — three shorthand commands carried "NEVER inspect
+  Redmine API response bodies" warnings to work around it. With `quiet=True` a
+  *successful* result is reduced to ids + status (`{"id": 12345, "status":
+  "ok"}`); bulk create returns one compact row per item plus the summary.
+  **Errors are never reduced** — a failed write keeps full detail in quiet mode,
+  which is when a caller needs it most. Default `False`, so existing callers are
+  byte-identical. Redmine #49381.
+
 ### Fixed
 - **Workflow cache no longer over-blocks multi-role users.** `is_disallowed`
   treated a `disallowed` observation for *any* role as decisive, but Redmine
