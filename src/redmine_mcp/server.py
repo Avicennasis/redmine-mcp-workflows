@@ -288,12 +288,47 @@ def _caller_tool_name() -> str:
         return "unknown"
 
 
-async def _wrap(coro_factory, *, write: bool = False):
+def _quiet_reduce(result: dict) -> dict:
+    """Reduce a SUCCESSFUL write result to ids + status (#49381).
+
+    Errors pass through untouched — a caller in quiet mode still needs full
+    validation detail. Bulk results keep one compact row per item plus the
+    summary, so a bulk pipeline can still tell which items failed.
+    """
+    if "error" in result:
+        return result
+    if "results" in result:
+        keys = ("subject", "status", "id", "error", "duplicate_of", "hint")
+        return {
+            "results": [
+                {k: r[k] for k in keys if k in r}
+                for r in result.get("results") or []
+                if isinstance(r, dict)
+            ],
+            "summary": result.get("summary", {}),
+        }
+    out: dict = {}
+    if "id" in result:
+        out["id"] = result["id"]
+    issue = result.get("issue")
+    if isinstance(issue, dict) and "id" in issue:
+        out.setdefault("id", issue["id"])
+    st = result.get("status")
+    out["status"] = st if isinstance(st, str) and st else "ok"
+    return out
+
+
+async def _wrap(coro_factory, *, write: bool = False, quiet: bool = False):
     """Helper to wrap a tool coroutine factory and convert API errors to JSON.
 
     Args:
         coro_factory: ``async (client, cache) -> dict`` callable.
         write: when True, gate the call on ``Config.read_only``.
+        quiet: when True, a SUCCESSFUL result is reduced to a minimal
+            acknowledgement (ids + status) before serialization — for bulk
+            pipelines where the full 3-5KB issue JSON is the #1 cause of context
+            exhaustion (#49381). ERRORS are never reduced: a failure always
+            returns full detail, quiet or not.
     """
     name = _caller_tool_name()
     started = time.perf_counter()
@@ -320,6 +355,8 @@ async def _wrap(coro_factory, *, write: bool = False):
                     log.exception("project cache invalidation failed after successful write")
             # Mark user-authored content as data, not instructions, before it
             # reaches the caller's context window.
+            if quiet and isinstance(result, dict):
+                result = _quiet_reduce(result)
             return _dump(wrap_user_content_fields(result))
         except RedmineAPIError as e:
             failed = True
@@ -666,6 +703,7 @@ async def redmine_create_issue(
     start_date: str = "",
     done_ratio: int = -1,
     custom_fields: list | str = "",
+    quiet: bool = False,
 ) -> str:
     """Create an issue with cache-aware id resolution.
 
@@ -709,6 +747,10 @@ async def redmine_create_issue(
 
     Returns the created issue or a structured validation error.
     Honors ``REDMINE_MCP_READ_ONLY``.
+
+    With ``quiet=True`` a successful result is reduced to ids + status (bulk:
+    compact per-item rows + summary) instead of the full issue JSON. Errors
+    are never reduced.
     """
     desc = description if description else None
     pri: int | str | None = priority if priority else None
@@ -748,7 +790,7 @@ async def redmine_create_issue(
             held_until_field_id=cfg.held_until_field_id,
         )
 
-    return await _wrap(factory, write=True)
+    return await _wrap(factory, write=True, quiet=quiet)
 
 
 @mcp.tool()
@@ -851,6 +893,7 @@ async def redmine_update_issue(
     done_ratio: int = -1,
     fixed_version_id: str = "",
     custom_fields: list | str = "",
+    quiet: bool = False,
 ) -> str:
     """Update an issue, with reactive workflow validation on status changes.
 
@@ -902,6 +945,10 @@ async def redmine_update_issue(
     :class:`WorkflowTransitionDisallowed` payload. After a real PUT the
     outcome is recorded so future calls benefit. Honors
     ``REDMINE_MCP_READ_ONLY``.
+
+    With ``quiet=True`` a successful result is reduced to ids + status (bulk:
+    compact per-item rows + summary) instead of the full issue JSON. Errors
+    are never reduced.
     """
     sub = subject if subject else None
     desc = description if description else None
@@ -955,11 +1002,11 @@ async def redmine_update_issue(
             held_until_field_id=cfg.held_until_field_id,
         )
 
-    return await _wrap(factory, write=True)
+    return await _wrap(factory, write=True, quiet=quiet)
 
 
 @mcp.tool()
-async def redmine_close_issue(issue_id: int, note: str = "") -> str:
+async def redmine_close_issue(issue_id: int, note: str = "", quiet: bool = False) -> str:
     """Move an issue to its first ``is_closed`` status (defaults to id 5).
 
     Args:
@@ -972,6 +1019,10 @@ async def redmine_close_issue(issue_id: int, note: str = "") -> str:
     On a workflow-disallowed direct closure, the response is repackaged
     with a closure-specific hint listing the allowed next states.
     Honors ``REDMINE_MCP_READ_ONLY``.
+
+    With ``quiet=True`` a successful result is reduced to ids + status (bulk:
+    compact per-item rows + summary) instead of the full issue JSON. Errors
+    are never reduced.
     """
     n = note if note else None
 
@@ -986,7 +1037,7 @@ async def redmine_close_issue(issue_id: int, note: str = "") -> str:
             held_until_field_id=cfg.held_until_field_id,
         )
 
-    return await _wrap(factory, write=True)
+    return await _wrap(factory, write=True, quiet=quiet)
 
 
 @mcp.tool()
@@ -1104,6 +1155,7 @@ async def redmine_add_comment(
     issue_id: int,
     note: str,
     private: bool = False,
+    quiet: bool = False,
 ) -> str:
     """Append a comment (journal entry) to an existing issue.
 
@@ -1120,12 +1172,16 @@ async def redmine_add_comment(
 
     Honors ``REDMINE_MCP_READ_ONLY``. Direct PUT — no pre-fetch, no
     workflow check (comments don't change status).
+
+    With ``quiet=True`` a successful result is reduced to ids + status (bulk:
+    compact per-item rows + summary) instead of the full issue JSON. Errors
+    are never reduced.
     """
 
     async def factory(client, cache):
         return await comments.add_comment(client, cache, issue_id, note, private=private)
 
-    return await _wrap(factory, write=True)
+    return await _wrap(factory, write=True, quiet=quiet)
 
 
 @mcp.tool()
@@ -1936,6 +1992,7 @@ async def redmine_bulk_create_issues(
     pacing_seconds: float = 0.05,
     stop_on_error: bool = False,
     concurrency: int = 1,
+    quiet: bool = False,
 ) -> str:
     """Bulk-create issues with subject idempotency.
 
@@ -1963,6 +2020,10 @@ async def redmine_bulk_create_issues(
     Returns ``{"results": [{subject, status, id?, duplicate_of?, error?, hint?}],
     "summary": {total, created, skipped, failed}}``.
     Honors ``REDMINE_MCP_READ_ONLY``.
+
+    With ``quiet=True`` a successful result is reduced to ids + status (bulk:
+    compact per-item rows + summary) instead of the full issue JSON. Errors
+    are never reduced.
     """
 
     async def factory(client, cache):
@@ -1978,7 +2039,7 @@ async def redmine_bulk_create_issues(
             difficulty_field_id=cfg.difficulty_field_id,
         )
 
-    return await _wrap(factory, write=True)
+    return await _wrap(factory, write=True, quiet=quiet)
 
 
 @mcp.tool()

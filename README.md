@@ -25,11 +25,29 @@ Most MCP servers for Redmine are thin wrappers around the REST API: an LLM call 
 - `redmine_invalidate_cache(scope)` — `"all"`, `"tracker:<id>"`, or `"project:<slug>"`.
 
 ### Issue lifecycle (5) — every write validates against the cache
-- `redmine_create_issue(project, tracker, subject, ..., difficulty="")`
+- `redmine_create_issue(project, tracker, subject, ..., difficulty="", quiet=False)`
 - `redmine_get_issue(id, include=...)`
-- `redmine_update_issue(id, ..., difficulty="", **fields)` — validates status transitions, custom fields, role permissions.
-- `redmine_close_issue(id, note=None)` — convenience over `update_issue` with closure-specific error messaging.
+- `redmine_update_issue(id, ..., difficulty="", quiet=False, **fields)` — validates status transitions, custom fields, role permissions.
+- `redmine_close_issue(id, note=None, quiet=False)` — convenience over `update_issue` with closure-specific error messaging.
 - `redmine_search_issues(query, project=None, status=None, ...)`
+
+#### Quiet writes
+
+Write tools return the full issue JSON (~3-5KB per call), which is the fastest
+way to exhaust a bulk pipeline's context. Pass **`quiet=True`** —
+`redmine_create_issue`, `redmine_update_issue`, `redmine_close_issue`,
+`redmine_add_comment`, `redmine_bulk_create_issues` — and a *successful* result
+comes back as ids + status only:
+
+```json
+{"id": 12345, "status": "ok"}
+```
+
+Bulk create returns one compact row per item (`subject`/`status`/`id`/`error`/
+`duplicate_of`/`hint`) plus the summary, so a bulk caller can still tell which
+items failed. **Errors are never reduced** — a failed write returns full
+validation detail in quiet mode too, because that is exactly when a caller needs
+it. Default is `False` (unchanged behaviour).
 
 #### Difficulty (engagement-mode signal, v0.4)
 
