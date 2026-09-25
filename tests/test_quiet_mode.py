@@ -90,6 +90,8 @@ def test_quiet_reduce_bulk_keeps_compact_per_item() -> None:
 def test_wrap_reduces_success_end_to_end(monkeypatch) -> None:
     """The whole handler path — not just _quiet_reduce — emits the small ack."""
 
+    monkeypatch.setenv("REDMINE_API_KEY", "test")
+
     async def fake_create(client, cache, **kw):
         return {
             "issue": {"id": 999, "subject": "s", "description": "d" * 5000},
@@ -98,9 +100,7 @@ def test_wrap_reduces_success_end_to_end(monkeypatch) -> None:
 
     monkeypatch.setattr(server.issues, "create_issue", fake_create)
     quiet = asyncio.run(
-        server.redmine_create_issue(
-            project="claudecode", tracker="Bug", subject="s", quiet=True
-        )
+        server.redmine_create_issue(project="claudecode", tracker="Bug", subject="s", quiet=True)
     )
     full = asyncio.run(
         server.redmine_create_issue(project="claudecode", tracker="Bug", subject="s")
@@ -114,6 +114,8 @@ def test_wrap_reduces_success_end_to_end(monkeypatch) -> None:
 def test_wrap_does_not_reduce_an_error(monkeypatch) -> None:
     """A failed write must keep full detail even in quiet mode."""
 
+    monkeypatch.setenv("REDMINE_API_KEY", "test")
+
     async def fake_create(client, cache, **kw):
         return {
             "error": "validation_failed",
@@ -123,9 +125,7 @@ def test_wrap_does_not_reduce_an_error(monkeypatch) -> None:
 
     monkeypatch.setattr(server.issues, "create_issue", fake_create)
     out = asyncio.run(
-        server.redmine_create_issue(
-            project="claudecode", tracker="Bug", subject="s", quiet=True
-        )
+        server.redmine_create_issue(project="claudecode", tracker="Bug", subject="s", quiet=True)
     )
     data = json.loads(out)
     assert data["error"] == "validation_failed"
