@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-29
+
 ### Added
 - **`quiet` write mode** (`redmine_create_issue`, `redmine_update_issue`,
   `redmine_close_issue`, `redmine_add_comment`, `redmine_bulk_create_issues`).
