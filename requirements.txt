@@ -1,3 +1,10 @@
 mcp>=2.2.0,<2.3.0
-httpx>=0.27.0
+httpx>=0.28.1
 platformdirs>=4.0.0
+
+# Transitive security floors (OSV 2026-09-30):
+#   httpx2/httpcore2 - PYSEC-2026-3844, PYSEC-2026-3845, PYSEC-2026-3846 (HIGH, fixed 2.10.0/2.12.0)
+#   python-multipart - GHSA-59g5-xgcq-4qw3, GHSA-wp53-j4wj-2cfg, GHSA-5rvq-cxj2-64vf, GHSA-pp6c-gr5w-3c5g (HIGH, fixed 0.0.30)
+httpx2>=2.12.0
+httpcore2>=2.10.0
+python-multipart>=0.0.30
