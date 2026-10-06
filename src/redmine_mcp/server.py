@@ -34,6 +34,7 @@ import time
 
 from mcp.server.mcpserver import Image, MCPServer
 
+from . import __version__
 from .cache.schema_db import SchemaCache
 from .client import RedmineClient
 from .config import Config
@@ -104,6 +105,7 @@ mcp = MCPServer(
         "stored as visible \\\\n text instead of line breaks."
     ),
     lifespan=_server_lifespan,
+    version=__version__,
 )
 
 # Module-level state. Lazy-initialized on first tool call so import is cheap
@@ -889,7 +891,9 @@ async def redmine_update_issue(
     clear_held: bool = False,
     held_until: str = "",
     due_date: str = "",
+    clear_due_date: bool = False,
     start_date: str = "",
+    clear_start_date: bool = False,
     done_ratio: int = -1,
     fixed_version_id: str = "",
     custom_fields: list | str = "",
@@ -925,13 +929,15 @@ async def redmine_update_issue(
             ``Held Until`` custom field. Empty means unchanged.
             **Optional and independent of** ``held`` — plenty of holds have
             no knowable end date, so a reason with no date is valid.
-        due_date: optional ISO-8601 date (``"2026-05-17"``). Empty leaves
-            it unchanged; pass the literal string ``""`` (i.e. just don't
-            send this arg) to leave it untouched. To clear an existing
-            due_date you currently need ``redmine_request`` with
-            ``{"issue": {"due_date": null}}`` — the MCP can't distinguish
-            "unset" from "leave alone" without explicit null support.
+        due_date: optional ISO-8601 date (``"2026-05-17"``). Empty (the
+            default) leaves it unchanged. To remove an existing due date use
+            ``clear_due_date=True``.
+        clear_due_date: set ``True`` to clear the issue's due date (sends
+            ``due_date: null``). Mutually exclusive with a non-empty
+            ``due_date``.
         start_date: same shape as ``due_date``.
+        clear_start_date: set ``True`` to clear the start date. Mutually
+            exclusive with a non-empty ``start_date``.
         done_ratio: optional 0-100 progress percent. ``-1`` (sentinel)
             means unchanged; ``0`` is explicit "reset to no progress."
         fixed_version_id: optional version id (string for id-or-empty).
@@ -969,6 +975,20 @@ async def redmine_update_issue(
         )
     h: str | bool | None = held if held else (False if clear_held else None)
     hu = held_until if held_until else None
+    for name, value, clear in (
+        ("due_date", due_date, clear_due_date),
+        ("start_date", start_date, clear_start_date),
+    ):
+        if value and clear:
+            return _dump(
+                {
+                    "error": f"{name}_arguments_conflict",
+                    "hint": (
+                        f'Pass either {name}="<YYYY-MM-DD>" to set it or clear_{name}=True '
+                        "to remove it, not both."
+                    ),
+                }
+            )
     dd = due_date if due_date else None
     sd = start_date if start_date else None
     dr = done_ratio if done_ratio != -1 else None
@@ -993,7 +1013,9 @@ async def redmine_update_issue(
             held=h,
             held_until=hu,
             due_date=dd,
+            clear_due_date=clear_due_date,
             start_date=sd,
+            clear_start_date=clear_start_date,
             done_ratio=dr,
             fixed_version_id=fv,
             custom_fields=cf,
@@ -1006,7 +1028,12 @@ async def redmine_update_issue(
 
 
 @mcp.tool()
-async def redmine_close_issue(issue_id: int, note: str = "", quiet: bool = False) -> str:
+async def redmine_close_issue(
+    issue_id: int,
+    note: str = "",
+    clear_held: bool = False,
+    quiet: bool = False,
+) -> str:
     """Move an issue to its first ``is_closed`` status (defaults to id 5).
 
     Args:
@@ -1015,6 +1042,9 @@ async def redmine_close_issue(issue_id: int, note: str = "", quiet: bool = False
             Use actual newline characters for multi-line notes, not
             backslash-n escape sequences. Redmine renders notes as
             Markdown (headings, bold, tables, lists all work).
+        clear_held: set ``True`` to remove the issue's hold (empty the
+            ``Held`` field) in the same update that closes it. A held issue
+            is otherwise rejected with ``issue_held``.
 
     On a workflow-disallowed direct closure, the response is repackaged
     with a closure-specific hint listing the allowed next states.
@@ -1033,6 +1063,7 @@ async def redmine_close_issue(issue_id: int, note: str = "", quiet: bool = False
             cache,
             issue_id,
             note=n,
+            clear_held=clear_held,
             held_field_id=cfg.held_field_id,
             held_until_field_id=cfg.held_until_field_id,
         )
@@ -1081,6 +1112,8 @@ async def redmine_search_issues(
     sort: str = "",
     limit: int = 25,
     offset: int = 0,
+    brief: bool = False,
+    fields: list | str = "",
 ) -> str:
     """Search/list issues with optional filters and pagination.
 
@@ -1117,11 +1150,26 @@ async def redmine_search_issues(
             as ``cf_<id>`` (e.g. ``"cf_5:desc"``).
         limit: page size (capped at 100).
         offset: skip the first N results.
+        brief: set ``True`` to return only ``id, project, tracker, status,
+            priority, subject, assigned_to, updated_on`` per issue instead of
+            the whole issue (descriptions and custom fields dropped). Default
+            ``False`` returns whole issues, as before.
+        fields: optional list (or comma-separated string) of top-level issue
+            keys to return per issue, e.g. ``["subject", "status"]``; ``id``
+            is always included. Overrides ``brief``. An unknown key returns
+            ``unknown_issue_fields`` with the valid names.
 
-    Returns ``{issues, total_count, limit, offset, query}``. Each issue's
-    ``project`` object carries ``identifier`` (slug) when the project is
-    known to the cache, so consumers need not map name → slug.
+    Returns ``{issues, total_count, limit, offset, query}`` — plus ``fields``
+    (the keys kept) when ``brief``/``fields`` projected the rows. Each
+    issue's ``project`` object carries ``identifier`` (slug) when the project
+    is known to the cache, so consumers need not map name → slug.
     """
+    projection: list[str] | None = None
+    if fields:
+        raw = fields.split(",") if isinstance(fields, str) else [str(f) for f in fields]
+        projection = [f.strip() for f in raw if f.strip()] or None
+    if projection is None and brief:
+        projection = list(issues.BRIEF_ISSUE_FIELDS)
     q = query if query else None
     proj: int | str | None = project if project else None
     st: int | str | None = status if status else None
@@ -1145,6 +1193,7 @@ async def redmine_search_issues(
             sort=srt,
             limit=limit,
             offset=offset,
+            fields=projection,
         )
 
     return await _wrap(factory)
@@ -2395,9 +2444,8 @@ async def redmine_list_messages(
     """List forum messages on a board.
 
     Args:
-        board_id: numeric Redmine board id (visible in the project's
-            forums URL or via the web UI; ``redmine_request`` covers
-            ``/projects/X/boards.json`` if the boards module is enabled).
+        board_id: numeric Redmine board id — list a project's boards with
+            ``redmine_list_boards`` (requires the boards module).
         limit: page size (capped server-side at 100).
         offset: skip the first N results.
 
@@ -3397,6 +3445,10 @@ def apply_tool_filter(config: Config | None = None) -> set[str]:
 
     Called once at startup. Returns the set of tool names that remain, so
     callers (and tests) can assert on the effective surface.
+
+    ``redmine_request`` is also dropped unless ``REDMINE_MCP_ENABLE_PASSTHROUGH``
+    is on: with the flag off every call answers ``passthrough_disabled``, so
+    advertising it only spends context and invites a dead-end call.
     """
     cfg = config or _get_config()
     registered = set(mcp._tool_manager._tools)  # noqa: SLF001 — no public name iterator
@@ -3407,6 +3459,8 @@ def apply_tool_filter(config: Config | None = None) -> set[str]:
         allowlist=cfg.tool_allowlist,
         denylist=cfg.tool_denylist,
     )
+    if not cfg.enable_passthrough:
+        allowed.discard("redmine_request")
     for name in sorted(registered - allowed):
         mcp.remove_tool(name)
         log.info("tool filtered out at startup: %s", name)

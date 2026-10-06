@@ -264,8 +264,10 @@ async def upload_attachment(
                 f"{filename!r} did not appear in attachments[] across "
                 f"{put_attempts} attempts (Redmine silently dropped the "
                 f"attachment, most commonly per-issue rate-limiting). "
-                "Upload token preserved; manual re-attach via "
-                "redmine_request PUT with the token may succeed."
+                "Upload token preserved; re-attaching it with a PUT of "
+                '{"issue": {"uploads": [...]}} may succeed — through '
+                "redmine_request when REDMINE_MCP_ENABLE_PASSTHROUGH is on, otherwise "
+                "retry redmine_upload_attachment or attach via the web UI."
             ),
             "upload": result["upload"],
             "attempts": put_attempts,

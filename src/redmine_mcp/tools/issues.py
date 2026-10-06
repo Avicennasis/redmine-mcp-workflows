@@ -50,6 +50,49 @@ DIFFICULTY_DEFAULT_VALUE = "Unclassified"
 HELD_FIELD_NAME = "Held"
 HELD_UNTIL_FIELD_NAME = "Held Until"
 
+# Top-level keys of an issue in Redmine's /issues.json listing. search_issues'
+# ``fields`` projection is validated against this set.
+ISSUE_FIELDS = frozenset(
+    {
+        "id",
+        "project",
+        "tracker",
+        "status",
+        "priority",
+        "author",
+        "assigned_to",
+        "category",
+        "fixed_version",
+        "parent",
+        "subject",
+        "description",
+        "start_date",
+        "due_date",
+        "done_ratio",
+        "is_private",
+        "estimated_hours",
+        "total_estimated_hours",
+        "spent_hours",
+        "total_spent_hours",
+        "custom_fields",
+        "created_on",
+        "updated_on",
+        "closed_on",
+    }
+)
+
+# What ``brief=True`` keeps: enough to triage a listing, none of the bulk.
+BRIEF_ISSUE_FIELDS = (
+    "id",
+    "project",
+    "tracker",
+    "status",
+    "priority",
+    "subject",
+    "assigned_to",
+    "updated_on",
+)
+
 log = logging.getLogger(__name__)
 
 
@@ -397,6 +440,41 @@ async def _apply_held(
     return custom_fields
 
 
+def _issue_with_pending_custom_fields(
+    issue: dict[str, Any],
+    custom_fields: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Return ``issue`` with this call's outgoing ``custom_fields`` overlaid.
+
+    The held gate has to judge the issue as it will be AFTER the PUT, not as
+    it was fetched before it. Judging the pre-update copy rejected
+    ``update_issue(status=<closed>, clear_held=True)`` even though the same
+    PUT empties Held — so the only way to close a held ticket was two calls.
+
+    Outgoing entries match the fetched ones by ``id`` (or by ``name`` for a
+    name-keyed entry); the fetched entry keeps its ``name`` so a name-matched
+    gate still recognises it. Entries the issue does not carry yet are
+    appended as sent.
+    """
+    if not custom_fields:
+        return issue
+    merged: list[dict[str, Any]] = [
+        dict(cf) for cf in issue.get("custom_fields") or [] if isinstance(cf, dict)
+    ]
+    for entry in custom_fields:
+        if not isinstance(entry, dict) or "value" not in entry:
+            continue
+        for cf in merged:
+            same_id = entry.get("id") is not None and cf.get("id") == entry.get("id")
+            same_name = entry.get("name") is not None and cf.get("name") == entry.get("name")
+            if same_id or same_name:
+                cf["value"] = entry["value"]
+                break
+        else:
+            merged.append(dict(entry))
+    return {**issue, "custom_fields": merged}
+
+
 # ---------------------------------------------------------------------
 # tools
 # ---------------------------------------------------------------------
@@ -620,6 +698,8 @@ async def update_issue(
     difficulty_field_id: int | None = None,
     held_field_id: int | None = None,
     held_until_field_id: int | None = None,
+    clear_due_date: bool = False,
+    clear_start_date: bool = False,
 ) -> dict[str, Any]:
     """Update an issue with reactive workflow validation.
 
@@ -643,6 +723,10 @@ async def update_issue(
     hold. ``held_until`` sets an optional date (ISO-8601) — many holds have
     no knowable end date, so a reason without a date is a valid state.
     Omitting either means "don't change."
+
+    ``due_date`` / ``start_date`` of ``None`` mean "don't change";
+    ``clear_due_date`` / ``clear_start_date`` send an explicit ``null`` to
+    remove the date, which is the only way to express "unset" here.
     """
     held_err = _validate_held_reason(held)
     if held_err is not None:
@@ -719,8 +803,10 @@ async def update_issue(
             s.get("id") == target_status_id and s.get("is_closed") for s in statuses
         )
         if target_is_closed:
+            # Gate on the Held value this PUT will leave behind: a clear_held /
+            # held / custom_fields change in the same call counts.
             held_err = field_validators.check_held_gate(
-                issue,
+                _issue_with_pending_custom_fields(issue, custom_fields),
                 held_field_id=held_field_id,
                 held_until_field_id=held_until_field_id,
             )
@@ -789,8 +875,12 @@ async def update_issue(
         api_payload["custom_fields"] = custom_fields
     if due_date is not None:
         api_payload["due_date"] = due_date
+    elif clear_due_date:
+        api_payload["due_date"] = None
     if start_date is not None:
         api_payload["start_date"] = start_date
+    elif clear_start_date:
+        api_payload["start_date"] = None
     if done_ratio is not None:
         api_payload["done_ratio"] = done_ratio
 
@@ -897,10 +987,16 @@ async def close_issue(
     issue_id: int,
     *,
     note: str | None = None,
+    clear_held: bool = False,
     held_field_id: int | None = None,
     held_until_field_id: int | None = None,
 ) -> dict[str, Any]:
-    """Set status to the first status flagged ``is_closed`` (defaults to id 5)."""
+    """Set status to the first status flagged ``is_closed`` (defaults to id 5).
+
+    ``clear_held=True`` empties the Held field in the same PUT, so a held
+    issue can be released and closed in one call. Without it a held issue is
+    rejected with ``issue_held``.
+    """
     statuses = cache.get_meta_json("issue_statuses")
     if statuses is None:
         await tracker_schema.refresh_global_enumerations(client, cache)
@@ -920,6 +1016,7 @@ async def close_issue(
         issue_id,
         status=closed_id,
         notes=note,
+        held=False if clear_held else None,
         held_field_id=held_field_id,
         held_until_field_id=held_until_field_id,
     )
@@ -1015,8 +1112,16 @@ async def search_issues(
     parent_id: int | None = None,
     limit: int = 25,
     offset: int = 0,
+    fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Search/list issues with optional substring + project/status/tracker filters.
+
+    ``fields`` projects each returned issue onto the named top-level keys
+    (``id`` is always kept), so a listing need not carry every description
+    and custom field. ``None`` (default) returns whole issues. Names are
+    checked against :data:`ISSUE_FIELDS` and an unknown one is an error:
+    Redmine omits empty keys, so a misspelt column would otherwise just look
+    empty on every row.
 
     ``query_id`` invokes a Redmine *saved query* by its numeric id. It does
     NOT reliably merge with caller-supplied filters: a saved query's own
@@ -1043,6 +1148,19 @@ async def search_issues(
     ``field[:desc]`` and comma-separated lists, including custom fields as
     ``cf_<id>`` (e.g. ``"cf_5:desc"``).
     """
+    projection: list[str] | None = None
+    if fields is not None:
+        unknown = sorted({f for f in fields if f not in ISSUE_FIELDS})
+        if unknown:
+            return {
+                "error": "unknown_issue_fields",
+                "hint": (
+                    f"Not top-level Redmine issue fields: {', '.join(unknown)}. "
+                    f"Choose from: {', '.join(sorted(ISSUE_FIELDS))}."
+                ),
+                "fields": unknown,
+            }
+        projection = list(dict.fromkeys(["id", *fields]))
     applied_limit = max(1, min(limit, 100))
     applied_offset = max(0, offset)
     params: dict[str, Any] = {"limit": applied_limit, "offset": applied_offset}
@@ -1137,10 +1255,15 @@ async def search_issues(
     issues = payload.get("issues", []) if isinstance(payload, dict) else []
     issues = [_attach_project_identifier(cache, issue) for issue in issues]
     total = payload.get("total_count", len(issues)) if isinstance(payload, dict) else len(issues)
-    return {
+    if projection is not None:
+        issues = [{k: issue[k] for k in projection if k in issue} for issue in issues]
+    result: dict[str, Any] = {
         "issues": issues,
         "total_count": total,
         "limit": applied_limit,
         "offset": applied_offset,
         "query": query,
     }
+    if projection is not None:
+        result["fields"] = projection
+    return result

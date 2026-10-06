@@ -13,7 +13,7 @@ Most MCP servers for Redmine are thin wrappers around the REST API: an LLM call 
 
 ## What you get
 
-**81 tools, 410 tests, ruff clean.** See [docs/tool-catalog.md](docs/tool-catalog.md) for the full list with parameters.
+**92 tools, 744 tests, ruff clean.** See [docs/tool-catalog.md](docs/tool-catalog.md) for the full list. The generic passthrough `redmine_request` is only advertised when `REDMINE_MCP_ENABLE_PASSTHROUGH` is on, so a default deployment lists 91.
 
 ### Discovery & introspection (4)
 - `redmine_describe_tracker(tracker)` — required fields, allowed status transitions per role, custom field schemas. Cache-backed.
@@ -27,9 +27,19 @@ Most MCP servers for Redmine are thin wrappers around the REST API: an LLM call 
 ### Issue lifecycle (5) — every write validates against the cache
 - `redmine_create_issue(project, tracker, subject, ..., difficulty="", quiet=False)`
 - `redmine_get_issue(id, include=...)`
-- `redmine_update_issue(id, ..., difficulty="", quiet=False, **fields)` — validates status transitions, custom fields, role permissions.
-- `redmine_close_issue(id, note=None, quiet=False)` — convenience over `update_issue` with closure-specific error messaging.
-- `redmine_search_issues(query, project=None, status=None, ...)`
+- `redmine_update_issue(id, ..., difficulty="", held="", clear_held=False, clear_due_date=False, clear_start_date=False, quiet=False, **fields)` — validates status transitions, custom fields, role permissions.
+- `redmine_close_issue(id, note="", clear_held=False, quiet=False)` — convenience over `update_issue` with closure-specific error messaging.
+- `redmine_search_issues(query, project=None, status=None, ..., brief=False, fields="")` — `brief=True` (or an explicit `fields` list) returns only the named keys per issue instead of whole issues; the default is unchanged.
+
+#### Holds
+
+`held="<reason>"` sets the `Held` custom field (a reason string — a bare `True`
+is rejected with `held_reason_required`) and blocks closing; `clear_held=True`
+removes it. The close gate judges the value the update will leave behind, so
+`redmine_close_issue(id, clear_held=True)` (or `redmine_update_issue` with a
+closed status and `clear_held=True`) releases and closes in one call, while a
+close that leaves `Held` non-empty is rejected with `issue_held` and a hint
+naming `clear_held=True`.
 
 #### Quiet writes
 
@@ -109,7 +119,7 @@ resolved via `/custom_fields.json` and cached.
 - `redmine_assign_issue_to_version(issue_id, version_id)` — pass `version_id=0` to clear.
 
 ### Generic passthrough (1) — v0.3, opt-in
-- `redmine_request(method, path, body="", params="")` — escape hatch to any Redmine REST endpoint. Gated behind `REDMINE_MCP_ENABLE_PASSTHROUGH=true`. Every response carries `validation_skipped: true` plus a `warning` field. NO validation, NO workflow check, NO schema cache. Use when no validated tool covers your use case; prefer the typed tools whenever possible.
+- `redmine_request(method, path, body="", params="")` — escape hatch to any Redmine REST endpoint. Gated behind `REDMINE_MCP_ENABLE_PASSTHROUGH=true`, and not advertised in the tool list while that is off. Every response carries `validation_skipped: true` plus a `warning` field. NO validation, NO workflow check, NO schema cache. Use when no validated tool covers your use case; prefer the typed tools whenever possible.
 
 ### News & forums (2) — v0.5
 - `redmine_list_news(project="", limit=25, offset=0)` — paginated news feed. Empty `project` for the global feed; pass an id or slug for the per-project feed at `/projects/{id}/news.json`.
@@ -193,6 +203,15 @@ Wrong (literal backslash-n sequences — renders as one line with visible \n):
 note = "## Summary\\nDone:\\n- Fixed the auth bug\\n- Updated tests"
 ```
 
+## Prompt-injection boundary tags
+
+Redmine text is attacker-influenceable, so read responses wrap user-authored
+fields (`description`, `notes`, `comments`, `summary`, `text`, `content`) in
+`<redmine_user_content>` … `</redmine_user_content>` to mark them as data. Writes
+strip those exact tags again — whether they wrap the whole value or appear
+inside it as a quoted excerpt — so a read → edit → write-back never stores them
+in Redmine. Look-alikes (other case, attributes, HTML-escaped) are left alone.
+
 ## How workflow validation works
 
 When Claude calls `redmine_update_issue(id=42, status="Closed")`:
@@ -221,7 +240,7 @@ Same pattern applies to custom fields (rejects unknown fields and regex/format v
 
 There are several others — most notably [jztan/redmine-mcp-server](https://github.com/jztan/redmine-mcp-server) (55 tools, comprehensive, no validation), [@onozaty/redmine-mcp-server](https://www.npmjs.com/package/@onozaty/redmine-mcp-server) (TypeScript, Zod schemas), [runekaagaard/mcp-redmine](https://github.com/runekaagaard/mcp-redmine) (generic OpenAPI passthrough). All are good projects.
 
-`redmine-mcp-workflows` differs by **validating before sending** — 81 tools with a schema-aware validation layer that prefers helpful errors over raw API passthrough.
+`redmine-mcp-workflows` differs by **validating before sending** — 92 tools with a schema-aware validation layer that prefers helpful errors over raw API passthrough.
 
 ## License
 

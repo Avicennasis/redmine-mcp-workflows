@@ -17,7 +17,9 @@ from typing import Any
 
 import httpx
 
+from . import __version__
 from .config import Config
+from .content_boundary import strip_user_content_tags_deep
 from .errors import RedmineAPIError
 from .net_guard import host_allowed
 
@@ -97,7 +99,7 @@ class RedmineClient:
         headers = httpx.Headers(
             {
                 "Accept": "application/json",
-                "User-Agent": "redmine-mcp-workflows/1.0",
+                "User-Agent": f"redmine-mcp-workflows/{__version__}",
             }
         )
         # OAuth bearer if available, otherwise X-Redmine-API-Key; raises if
@@ -141,6 +143,10 @@ class RedmineClient:
         # Callers may override for a known-safe non-idempotent method.
         if idempotent is None:
             idempotent = method.upper() in IDEMPOTENT_METHODS
+        if json is not None:
+            # Read responses wrap user text in boundary tags; a caller that
+            # edits and writes it back must not store those tags in Redmine.
+            json = strip_user_content_tags_deep(json)
 
         last_exc: Exception | None = None
         for attempt in range(MAX_RETRIES + 1):
