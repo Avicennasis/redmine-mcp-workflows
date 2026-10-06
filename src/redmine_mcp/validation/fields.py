@@ -257,6 +257,17 @@ def _matches_field(cf: dict[str, Any], field_id: int | None, name: str) -> bool:
     return cf.get("name") == name
 
 
+def _field_text(value: Any) -> str:
+    """A custom-field value as stripped text (multi-value lists are joined).
+
+    The gate now also sees the caller's outgoing values, which are not
+    guaranteed to be strings the way Redmine's responses are.
+    """
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value if v not in (None, "")).strip()
+    return "" if value is None else str(value).strip()
+
+
 def check_held_gate(
     issue: dict[str, Any],
     *,
@@ -279,9 +290,9 @@ def check_held_gate(
 
     for cf in custom_fields:
         if _matches_field(cf, held_field_id, HELD_FIELD_NAME):
-            held_value = (cf.get("value") or "").strip()
+            held_value = _field_text(cf.get("value"))
         elif _matches_field(cf, held_until_field_id, HELD_UNTIL_FIELD_NAME):
-            held_until_value = (cf.get("value") or "").strip() or None
+            held_until_value = _field_text(cf.get("value")) or None
 
     if not held_value:
         return None

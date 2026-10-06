@@ -1525,6 +1525,43 @@ async def test_close_issue_without_clear_held_hint_names_clear_held(cache: Schem
     assert "redmine_close_issue(issue_id=42, clear_held=True)" in result["hint"]
 
 
+async def test_update_issue_string_id_hold_while_closing_is_rejected_with_pinned_id(
+    cache: SchemaCache,
+) -> None:
+    """``{"id": "2"}`` must match a fetched ``{"id": 2}`` — else the gate misses it."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    unheld = _issue_payload_held(status_id=1, status_name="New")
+    unheld["issue"]["custom_fields"].append({"id": 2, "name": "Held", "value": ""})
+    client = FakeClient({("GET", "/issues/42.json"): unheld})
+    result = await issues.update_issue(
+        client,
+        cache,
+        42,
+        status=5,
+        custom_fields=[{"id": "2", "value": "waiting on X"}],
+        held_field_id=2,
+    )
+    assert result["error"] == "issue_held"
+    assert result["held_reason"] == "waiting on X"
+    assert not any(c[0] == "PUT" for c in client.calls)
+
+
+async def test_update_issue_list_valued_held_entry_does_not_crash_the_gate(
+    cache: SchemaCache,
+) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    unheld = _issue_payload_held(status_id=1, status_name="New")
+    unheld["issue"]["custom_fields"].append({"id": 2, "name": "Held", "value": ""})
+    client = FakeClient({("GET", "/issues/42.json"): unheld})
+    result = await issues.update_issue(
+        client, cache, 42, status=5, custom_fields=[{"id": 2, "value": ["blocked"]}]
+    )
+    assert result["error"] == "issue_held"
+    assert result["held_reason"] == "blocked"
+
+
 def test_pending_custom_fields_overlay_keeps_name_for_name_matched_gate() -> None:
     issue = {"id": 1, "custom_fields": [{"id": 2, "name": "Held", "value": "x"}]}
     merged = issues._issue_with_pending_custom_fields(issue, [{"id": 2, "value": ""}])

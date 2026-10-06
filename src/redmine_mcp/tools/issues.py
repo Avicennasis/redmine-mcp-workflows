@@ -453,8 +453,10 @@ def _issue_with_pending_custom_fields(
 
     Outgoing entries match the fetched ones by ``id`` (or by ``name`` for a
     name-keyed entry); the fetched entry keeps its ``name`` so a name-matched
-    gate still recognises it. Entries the issue does not carry yet are
-    appended as sent.
+    gate still recognises it. Ids are compared as integers — callers may send
+    ``"5"`` where Redmine returns ``5``, and a string id that failed to match
+    would let a pinned-id gate miss a hold this very PUT sets. Entries the
+    issue does not carry yet are appended with an integer id.
     """
     if not custom_fields:
         return issue
@@ -464,14 +466,18 @@ def _issue_with_pending_custom_fields(
     for entry in custom_fields:
         if not isinstance(entry, dict) or "value" not in entry:
             continue
+        entry_id = _try_int(entry.get("id"))
         for cf in merged:
-            same_id = entry.get("id") is not None and cf.get("id") == entry.get("id")
+            same_id = entry_id is not None and _try_int(cf.get("id")) == entry_id
             same_name = entry.get("name") is not None and cf.get("name") == entry.get("name")
             if same_id or same_name:
                 cf["value"] = entry["value"]
                 break
         else:
-            merged.append(dict(entry))
+            appended = dict(entry)
+            if entry_id is not None:
+                appended["id"] = entry_id
+            merged.append(appended)
     return {**issue, "custom_fields": merged}
 
 

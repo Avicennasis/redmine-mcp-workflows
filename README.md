@@ -13,7 +13,7 @@ Most MCP servers for Redmine are thin wrappers around the REST API: an LLM call 
 
 ## What you get
 
-**92 tools, 744 tests, ruff clean.** See [docs/tool-catalog.md](docs/tool-catalog.md) for the full list. The generic passthrough `redmine_request` is only advertised when `REDMINE_MCP_ENABLE_PASSTHROUGH` is on, so a default deployment lists 91.
+**92 tools, 746 tests, ruff clean.** See [docs/tool-catalog.md](docs/tool-catalog.md) for the full list. The generic passthrough `redmine_request` is only advertised when `REDMINE_MCP_ENABLE_PASSTHROUGH` is on, so a default deployment lists 91.
 
 ### Discovery & introspection (4)
 - `redmine_describe_tracker(tracker)` — required fields, allowed status transitions per role, custom field schemas. Cache-backed.
