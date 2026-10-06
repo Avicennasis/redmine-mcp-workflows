@@ -2,5 +2,18 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "pre-commit": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "ruff is pinned in three places that must move in one PR: the ==pin in pyproject.toml's dev extra, uv.lock, and the astral-sh/ruff-pre-commit rev in .pre-commit-config.yaml. CI's lint job runs the pyproject pin and the pre-commit job runs the rev, so a split bump makes the two gates run different linters. Renovate's pre-commit manager is opt-in (enabled above), which is why the rev sat at v0.16.0 while pyproject and uv.lock reached 0.16.10.",
+      "matchPackageNames": [
+        "ruff",
+        "astral-sh/ruff-pre-commit"
+      ],
+      "groupName": "ruff"
+    }
   ]
 }

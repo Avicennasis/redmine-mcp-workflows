@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-10-06
+
+**Why a major version.** 1.1.0 shipped breaking changes under a minor number:
+`held=` takes a reason string (a bare `True` is rejected — see 1.1.0 below), and
+the server moved to MCP Python SDK v2 (`mcp>=2.2.0,<2.3.0`, now
+`>=2.3.0,<2.4.0`), which the 1.1.0 notes did not record. 2.0.0 is the number
+those changes should have carried; this release also changes the advertised
+tool list (see *Changed*).
+
+### Fixed
+- **Clear a hold and close in one call.** The held gate inspected the issue as
+  fetched *before* the update, so `redmine_update_issue(status=<closed>,
+  clear_held=True)` was rejected with `issue_held` although the same PUT
+  empties `Held` — releasing and closing took two calls. The gate now judges the
+  `Held` value the update will leave behind, after the `clear_held` / `held` /
+  `custom_fields` of the same call. The converse is closed too: setting a hold
+  while closing an un-held issue used to slip through and is now rejected. A
+  close that leaves `Held` non-empty is still rejected.
+- **Boundary tags are no longer stored in Redmine.** Since 1.1.0 read responses
+  wrap user text in `<redmine_user_content>` … `</redmine_user_content>`
+  (prompt-injection boundary, #40869), but nothing removed them on the way
+  back: read → edit → write-back stored the tags, humans saw them in Redmine,
+  and the next read wrapped already-tagged text. Every outgoing JSON body —
+  issues, notes, journal edits, wiki text, news, forum messages, subjects,
+  custom-field values, passthrough bodies — now has the exact tag strings
+  removed: when they wrap the whole value, `strip(wrap(v)) == v` exactly; when
+  they appear inside a value (a quoted excerpt), each occurrence goes.
+  Look-alikes (other case, attributes, HTML-escaped) are untouched, and binary
+  uploads are not modified.
+- **Clearing a date no longer requires a disabled tool.** The `due_date` docs
+  on `redmine_update_issue` sent callers to `redmine_request`, which is off by
+  default. New `clear_due_date` / `clear_start_date` send an explicit `null`;
+  combining one with a non-empty date returns `due_date_arguments_conflict` /
+  `start_date_arguments_conflict`. Two other passthrough pointers now name a
+  working route: `redmine_list_messages` (board ids → `redmine_list_boards`)
+  and the `attachment_not_attached` hint.
+- `__version__` said `1.0.0` and the User-Agent `1.0`; both now follow the
+  package version, which the server also reports as `serverInfo.version`.
+
+### Added
+- **`clear_held` on `redmine_close_issue`** — releases the hold in the closing
+  update. The `issue_held` hint now names it
+  (`redmine_close_issue(issue_id=N, clear_held=True)`), and the
+  `held_reason_required` hint names `clear_held=True` instead of `held=False`,
+  which the MCP tool layer cannot express.
+- **`brief` / `fields` on `redmine_search_issues`** — opt-in per-issue
+  projection so a listing need not carry every description and custom field.
+  `brief=True` keeps `id, project, tracker, status, priority, subject,
+  assigned_to, updated_on`; `fields=[...]` (or `"a,b"`) names the keys and
+  overrides `brief`; an unknown key returns `unknown_issue_fields` (Redmine
+  omits empty keys, so a typo would otherwise read as an empty column). The
+  default is unchanged.
+
+### Changed
+- **`redmine_request` is only advertised when `REDMINE_MCP_ENABLE_PASSTHROUGH`
+  is on.** With the flag off every call answered `passthrough_disabled`, so
+  listing it spent context and invited a dead-end call. A default deployment
+  now lists 91 tools (92 registered).
+- `docs/tool-catalog.md` lists all 92 tools — it said 81, with eleven missing,
+  three listed twice and two section counts wrong — and
+  `tests/test_docs_catalog.py` now fails on drift. README counts updated.
+- ruff's three pins are aligned at 0.16.10: `.pre-commit-config.yaml` had stayed
+  at `v0.16.0` because Renovate's pre-commit manager is opt-in. `renovate.json`
+  enables it and groups `ruff` with `astral-sh/ruff-pre-commit`, so pyproject,
+  `uv.lock` and the hook rev move in one PR.
+
+### Dependencies (merged to main after 1.1.0)
+- `mcp` `>=2.3.0,<2.4.0` (#82).
+- ruff 0.16.10 in pyproject and `uv.lock` (#81).
+- PyJWT 2.15.1 in `uv.lock` (GHSA-ffc3-869f-jxw9) and transitive security
+  floors in `requirements.txt`: `httpx>=0.28.1`, `httpx2>=2.12.0` /
+  `httpcore2>=2.10.0` (PYSEC-2026-3844, -3845, -3846), `python-multipart>=0.0.30`
+  (GHSA-59g5-xgcq-4qw3, GHSA-wp53-j4wj-2cfg, GHSA-5rvq-cxj2-64vf,
+  GHSA-pp6c-gr5w-3c5g) (#79).
+- GitHub Actions digest refresh (#80).
+
 ## [1.1.0] — 2026-09-29
 
 ### Added

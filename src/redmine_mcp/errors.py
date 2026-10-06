@@ -350,7 +350,12 @@ class IssueHeld(StructuredError):
     ) -> None:
         super().__init__(error="issue_held")
         date_suffix = f" (held until {held_until})" if held_until else ""
-        self.hint = f'Cannot close #{issue_id}: held — "{held_reason}"{date_suffix}'
+        self.hint = (
+            f'Cannot close #{issue_id}: held — "{held_reason}"{date_suffix}. '
+            "If the hold no longer applies, release it in the same call: "
+            f"redmine_close_issue(issue_id={issue_id}, clear_held=True), or "
+            "redmine_update_issue with the closed status and clear_held=True."
+        )
         self.extra = {
             "issue_id": issue_id,
             "held_reason": held_reason,
@@ -377,7 +382,7 @@ class HeldReasonRequired(StructuredError):
         self.hint = (
             'Pass held="<why this ticket is held>" instead of held=True. '
             "The Held field is prose a human reads later; a bare flag records nothing "
-            "and overwrites any existing reason. Use held=False to clear a hold."
+            "and overwrites any existing reason. To clear a hold, pass clear_held=True."
         )
 
 

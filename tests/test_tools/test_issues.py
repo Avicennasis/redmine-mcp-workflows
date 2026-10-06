@@ -1409,6 +1409,168 @@ async def test_close_issue_rejects_when_held(cache: SchemaCache) -> None:
 
 
 # ---------------------------------------------------------------------
+# held gate judges the MERGED Held value (card 23 / D)
+#
+# The gate used to inspect the issue as fetched BEFORE the update, so
+# clear_held + close in one call was rejected, and setting a new hold while
+# closing an un-held issue slipped through.
+# ---------------------------------------------------------------------
+
+
+def _held_close_client(*, held_before: str, held_after: str = "") -> FakeClient:
+    return FakeClient(
+        {
+            ("GET", "/issues/42.json"): [
+                _issue_payload_held(status_id=1, status_name="New", held=held_before),
+                _issue_payload_held(status_id=5, status_name="Closed", held=held_after),
+            ],
+            ("GET", "/users/current.json"): {"user": {"id": 1, "admin": True, "memberships": []}},
+            ("PUT", "/issues/42.json"): None,
+        }
+    )
+
+
+def _put_payload(client: FakeClient) -> dict[str, Any]:
+    puts = [c for c in client.calls if c[0] == "PUT"]
+    assert len(puts) == 1, client.calls
+    return puts[0][2]["issue"]
+
+
+async def test_update_issue_clear_held_and_close_in_one_call(cache: SchemaCache) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_held_field(cache)
+    client = _held_close_client(held_before="Waiting on vendor response")
+    result = await issues.update_issue(client, cache, 42, status=5, held=False)
+    assert "error" not in result, result
+    sent = _put_payload(client)
+    assert sent["status_id"] == 5
+    assert {"id": 2, "value": ""} in sent["custom_fields"]
+
+
+async def test_update_issue_explicit_custom_field_clear_and_close(cache: SchemaCache) -> None:
+    """Emptying Held through custom_fields in the same call counts too."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    client = _held_close_client(held_before="Waiting on vendor response")
+    result = await issues.update_issue(
+        client, cache, 42, status=5, custom_fields=[{"id": 2, "value": ""}]
+    )
+    assert "error" not in result, result
+    assert _put_payload(client)["status_id"] == 5
+
+
+async def test_update_issue_close_still_rejected_when_held_stays_non_empty(
+    cache: SchemaCache,
+) -> None:
+    """Touching only Held Until leaves the hold in place — still rejected."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): _issue_payload_held(
+                status_id=1, status_name="New", held="Waiting on vendor", held_until="2026-06-01"
+            ),
+        }
+    )
+    result = await issues.update_issue(
+        client, cache, 42, status=5, held_until="2026-12-01", held_until_field_id=3
+    )
+    assert result["error"] == "issue_held"
+    assert result["held_reason"] == "Waiting on vendor"
+    assert not any(c[0] == "PUT" for c in client.calls)
+
+
+async def test_update_issue_setting_a_hold_while_closing_is_rejected(cache: SchemaCache) -> None:
+    """A hold written by the same call blocks the close it rides on."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_held_field(cache)
+    # Redmine lists every applicable custom field, empty ones included.
+    unheld = _issue_payload_held(status_id=1, status_name="New")
+    unheld["issue"]["custom_fields"].append({"id": 2, "name": "Held", "value": ""})
+    client = FakeClient({("GET", "/issues/42.json"): unheld})
+    result = await issues.update_issue(client, cache, 42, status=5, held="new blocker")
+    assert result["error"] == "issue_held"
+    assert result["held_reason"] == "new blocker"
+    assert not any(c[0] == "PUT" for c in client.calls)
+
+
+async def test_close_issue_clear_held_releases_and_closes(cache: SchemaCache) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    _seed_held_field(cache)
+    client = _held_close_client(held_before="Waiting on vendor response")
+    result = await issues.close_issue(client, cache, 42, note="done", clear_held=True)
+    assert "error" not in result, result
+    sent = _put_payload(client)
+    assert sent["status_id"] == 5
+    assert sent["notes"] == "done"
+    assert {"id": 2, "value": ""} in sent["custom_fields"]
+
+
+async def test_close_issue_without_clear_held_hint_names_clear_held(cache: SchemaCache) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): _issue_payload_held(
+                status_id=1, status_name="New", held="Waiting on vendor response"
+            ),
+        }
+    )
+    result = await issues.close_issue(client, cache, 42)
+    assert result["error"] == "issue_held"
+    assert "clear_held=True" in result["hint"]
+    assert "redmine_close_issue(issue_id=42, clear_held=True)" in result["hint"]
+
+
+async def test_update_issue_string_id_hold_while_closing_is_rejected_with_pinned_id(
+    cache: SchemaCache,
+) -> None:
+    """``{"id": "2"}`` must match a fetched ``{"id": 2}`` — else the gate misses it."""
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    unheld = _issue_payload_held(status_id=1, status_name="New")
+    unheld["issue"]["custom_fields"].append({"id": 2, "name": "Held", "value": ""})
+    client = FakeClient({("GET", "/issues/42.json"): unheld})
+    result = await issues.update_issue(
+        client,
+        cache,
+        42,
+        status=5,
+        custom_fields=[{"id": "2", "value": "waiting on X"}],
+        held_field_id=2,
+    )
+    assert result["error"] == "issue_held"
+    assert result["held_reason"] == "waiting on X"
+    assert not any(c[0] == "PUT" for c in client.calls)
+
+
+async def test_update_issue_list_valued_held_entry_does_not_crash_the_gate(
+    cache: SchemaCache,
+) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    unheld = _issue_payload_held(status_id=1, status_name="New")
+    unheld["issue"]["custom_fields"].append({"id": 2, "name": "Held", "value": ""})
+    client = FakeClient({("GET", "/issues/42.json"): unheld})
+    result = await issues.update_issue(
+        client, cache, 42, status=5, custom_fields=[{"id": 2, "value": ["blocked"]}]
+    )
+    assert result["error"] == "issue_held"
+    assert result["held_reason"] == "blocked"
+
+
+def test_pending_custom_fields_overlay_keeps_name_for_name_matched_gate() -> None:
+    issue = {"id": 1, "custom_fields": [{"id": 2, "name": "Held", "value": "x"}]}
+    merged = issues._issue_with_pending_custom_fields(issue, [{"id": 2, "value": ""}])
+    assert merged["custom_fields"] == [{"id": 2, "name": "Held", "value": ""}]
+    # The fetched issue itself is not mutated.
+    assert issue["custom_fields"][0]["value"] == "x"
+
+
+# ---------------------------------------------------------------------
 # search_issues
 # ---------------------------------------------------------------------
 
@@ -1429,6 +1591,67 @@ async def test_search_issues_passes_substring_subject_filter(cache: SchemaCache)
     sent = client.calls[-1][2]
     assert sent["subject"] == "~drift"
     assert sent["limit"] == 25
+
+
+def _two_issue_listing() -> dict[str, Any]:
+    return {
+        "issues": [
+            {
+                "id": 1,
+                "subject": "first",
+                "status": {"id": 1, "name": "New"},
+                "description": "x" * 2000,
+                "custom_fields": [{"id": 2, "name": "Held", "value": ""}],
+            },
+            {"id": 2, "subject": "second", "status": {"id": 2, "name": "In Progress"}},
+        ],
+        "total_count": 2,
+    }
+
+
+async def test_search_issues_default_returns_whole_issues(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): _two_issue_listing()})
+    result = await issues.search_issues(client, cache)
+    assert result["issues"][0]["description"] == "x" * 2000
+    assert "fields" not in result
+
+
+async def test_search_issues_fields_projects_rows(cache: SchemaCache) -> None:
+    client = FakeClient({("GET", "/issues.json"): _two_issue_listing()})
+    result = await issues.search_issues(client, cache, fields=["subject", "status"])
+    assert result["issues"] == [
+        {"id": 1, "subject": "first", "status": {"id": 1, "name": "New"}},
+        {"id": 2, "subject": "second", "status": {"id": 2, "name": "In Progress"}},
+    ]
+    assert result["fields"] == ["id", "subject", "status"]
+    assert result["total_count"] == 2
+
+
+async def test_search_issues_unknown_field_is_an_error_not_an_empty_column(
+    cache: SchemaCache,
+) -> None:
+    client = FakeClient({("GET", "/issues.json"): _two_issue_listing()})
+    result = await issues.search_issues(client, cache, fields=["subject", "stauts"])
+    assert result["error"] == "unknown_issue_fields"
+    assert result["fields"] == ["stauts"]
+    assert client.calls == []
+
+
+async def test_update_issue_clear_due_and_start_date_send_null(cache: SchemaCache) -> None:
+    _seed_enums(cache)
+    _seed_tracker_and_project(cache)
+    client = FakeClient(
+        {
+            ("GET", "/issues/42.json"): _issue_payload(),
+            ("PUT", "/issues/42.json"): None,
+        }
+    )
+    result = await issues.update_issue(
+        client, cache, 42, clear_due_date=True, clear_start_date=True
+    )
+    assert "error" not in result, result
+    put = next(c for c in client.calls if c[0] == "PUT")
+    assert put[2]["issue"] == {"due_date": None, "start_date": None}
 
 
 async def test_search_issues_resolves_project_slug_to_id(cache: SchemaCache) -> None:
